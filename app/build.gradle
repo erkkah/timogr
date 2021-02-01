@@ -6,7 +6,7 @@ android {
 
     defaultConfig {
         applicationId "com.sedgelake.timogr"
-        minSdkVersion 14
+        minSdkVersion 21
         targetSdkVersion 28
         externalNativeBuild {
             cmake {
@@ -16,20 +16,21 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     externalNativeBuild {
         cmake {
-            version '3.10.2'
+            // version '3.10.2'
             path 'src/main/cpp/CMakeLists.txt'
         }
     }
 }
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.appcompat:appcompat:1.0.2'
-    implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
+    // implementation fileTree(dir: 'libs', include: ['*.jar'])
+    // implementation 'androidx.appcompat:appcompat:1.0.2'
+    // implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
 }
