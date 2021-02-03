@@ -16,12 +16,8 @@
 
 cmake_minimum_required(VERSION 3.4.1)
 
-# build native_app_glue as a static lib
 set(${CMAKE_C_FLAGS}, "${CMAKE_C_FLAGS}")
-add_library(native_app_glue STATIC
-    ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
-
-add_library(tigr STATIC /home/erkkah/src/tigr/tigr.c)
+add_library(tigr STATIC /Users/erik/src/tigr/tigr.c)
 
 target_include_directories(tigr PRIVATE
     ${ANDROID_NDK}/sources/android/native_app_glue)
@@ -34,13 +30,15 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11 -Wall -Werror")
 set(CMAKE_SHARED_LINKER_FLAGS
     "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate")
 
-add_library(native-activity SHARED main.cpp)
+add_library(native-activity SHARED main.cpp tigractivity.cpp tigrglue.cpp)
+
+target_include_directories(native-activity PRIVATE
+    ${ANDROID_NDK}/sources/android/native_app_glue)
 
 # add lib dependencies
 target_link_libraries(native-activity
     tigr
     android
-    native_app_glue
     EGL
     GLESv3
     log)
