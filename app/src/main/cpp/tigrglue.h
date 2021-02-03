@@ -4,6 +4,7 @@
 #include "/Users/erik/src/tigr/src/tigr_android.h"
 
 void startTigrThread();
+void stopTigrThread();
 void setTigrWindow(ANativeWindow* window);
 void resetTigrWindow(ANativeWindow* window);
 void setTigrInputQueue(AInputQueue* queue);

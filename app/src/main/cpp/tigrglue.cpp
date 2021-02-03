@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <android/looper.h>
 
+#include "swappy/swappyGL.h"
+
 #include "log.h"
 
 extern "C" void tigrMain();
@@ -44,6 +46,7 @@ typedef enum {
     RESET_WINDOW,
     SET_INPUT,
     RESET_INPUT,
+    DESTROY,
 } TigrMessage;
 
 struct TigrMessageData {
@@ -95,6 +98,12 @@ void startTigrThread() {
         nullptr);
 }
 
+void stopTigrThread() {
+    writeTigrMessage(TigrMessageData{
+        .message = DESTROY,
+    });
+}
+
 void setTigrWindow(ANativeWindow* window) {
     writeTigrMessage(TigrMessageData{
         .message = SET_WINDOW,
@@ -121,6 +130,10 @@ void resetTigrInputQueue(AInputQueue* queue) {
         .message = RESET_INPUT,
         .queue = queue,
     });
+}
+
+extern "C" void android_swap(EGLDisplay display, EGLSurface surface) {
+    SwappyGL_swap(display, surface);
 }
 
 extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* userData), void* userData) {
@@ -158,14 +171,21 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
                     AInputQueue_detachLooper(messageData.queue);
                     inputQueue = nullptr;
                     break;
+                case DESTROY:
+                    eventHandler(
+                        AndroidEvent{
+                            .type = AE_ACTIVITY_DESTROYED,
+                        },
+                        userData);
+                    break;
             }
             notifyMainThread();
+            break;
         }
 
         case INPUT_ID: {
             AInputEvent* event = NULL;
             while (AInputQueue_getEvent(inputQueue, &event) >= 0) {
-                LOGD("New input event: type=%d\n", AInputEvent_getType(event));
                 if (AInputQueue_preDispatchEvent(inputQueue, event)) {
                     continue;
                 }
@@ -177,6 +197,7 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
                     userData);
                 AInputQueue_finishEvent(inputQueue, event, handled);
             }
+            break;
         }
 
         default:
@@ -185,4 +206,6 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
             }
             return 0;
     }
+
+    return eventID >= 0 ? 1 : 0;
 }

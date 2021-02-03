@@ -1,4 +1,5 @@
 #include <android/native_activity.h>
+#include "swappy/swappyGL.h"
 
 #include "jniglue.h"
 #include "tigrglue.h"
@@ -40,12 +41,15 @@ static void onStop(ANativeActivity* activity) {
 }
 
 static void onDestroy(ANativeActivity* activity) {
+    stopTigrThread();
+    SwappyGL_destroy();
 }
 
 static void onWindowFocusChanged(ANativeActivity* activity, int focused) {
 }
 
 static void onNativeWindowCreated(ANativeActivity* activity, ANativeWindow* window) {
+    SwappyGL_setWindow(window);
     setTigrWindow(window);
 }
 
@@ -85,5 +89,11 @@ void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_
     activity->instance = 0;
 
     setImmersiveMode(activity->vm, activity->clazz);
+
+    JNIEnv* env;
+    activity->vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+    SwappyGL_init(env, activity->clazz);
+    SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_30FPS);
+
     startTigrThread();
 }

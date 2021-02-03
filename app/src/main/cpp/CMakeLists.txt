@@ -16,6 +16,8 @@
 
 cmake_minimum_required(VERSION 3.4.1)
 
+find_package(games-frame-pacing REQUIRED CONFIG)
+
 set(${CMAKE_C_FLAGS}, "${CMAKE_C_FLAGS}")
 add_library(tigr STATIC /Users/erik/src/tigr/tigr.c)
 
@@ -38,6 +40,7 @@ target_include_directories(native-activity PRIVATE
 # add lib dependencies
 target_link_libraries(native-activity
     tigr
+    games-frame-pacing::swappy_static
     android
     EGL
     GLESv3
