@@ -41,7 +41,7 @@ static void onStop(ANativeActivity* activity) {
 }
 
 static void onDestroy(ANativeActivity* activity) {
-    stopTigrThread();
+    stopTigr();
     SwappyGL_destroy();
 }
 
@@ -49,6 +49,7 @@ static void onWindowFocusChanged(ANativeActivity* activity, int focused) {
 }
 
 static void onNativeWindowCreated(ANativeActivity* activity, ANativeWindow* window) {
+    ANativeWindow_setBuffersGeometry(window, 0, 0, AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM);
     SwappyGL_setWindow(window);
     setTigrWindow(window);
 }
@@ -63,6 +64,10 @@ static void onInputQueueCreated(ANativeActivity* activity, AInputQueue* queue) {
 
 static void onInputQueueDestroyed(ANativeActivity* activity, AInputQueue* queue) {
     resetTigrInputQueue(queue);
+}
+
+static void onContentRectChanged(ANativeActivity* activity, const ARect* rect) {
+    refreshTigrWindow();
 }
 
 static void onConfigurationChanged(ANativeActivity* activity) {
@@ -84,6 +89,7 @@ void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_
     activity->callbacks->onNativeWindowDestroyed = onNativeWindowDestroyed;
     activity->callbacks->onInputQueueCreated = onInputQueueCreated;
     activity->callbacks->onInputQueueDestroyed = onInputQueueDestroyed;
+    activity->callbacks->onContentRectChanged = onContentRectChanged;
     activity->callbacks->onConfigurationChanged = onConfigurationChanged;
     activity->callbacks->onLowMemory = onLowMemory;
     activity->instance = 0;
@@ -95,5 +101,5 @@ void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_
     SwappyGL_init(env, activity->clazz);
     SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_30FPS);
 
-    startTigrThread();
+    startTigr(activity->assetManager);
 }

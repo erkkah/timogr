@@ -2,12 +2,15 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <errno.h>
 #include <android/looper.h>
+#include <android/asset_manager.h>
 
 #include "swappy/swappyGL.h"
 
+#include "/Users/erik/src/tigr/src/tigr_android.h"
 #include "log.h"
 
 extern "C" void tigrMain();
@@ -28,6 +31,8 @@ int messageWriteFd;
 
 AInputQueue* inputQueue;
 ALooper* looper;
+AAssetManager* assetManager;
+ANativeWindow* window;
 
 void waitForTigrThread() {
     pthread_mutex_lock(&tokenLock);
@@ -71,7 +76,9 @@ void readTigrMessage(TigrMessageData* messageData) {
 
 }  // namespace
 
-void startTigrThread() {
+void startTigr(AAssetManager* mgr) {
+    assetManager = mgr;
+
     int fds[2];
     if (!pipe(fds)) {
         // handle error
@@ -98,22 +105,35 @@ void startTigrThread() {
         nullptr);
 }
 
-void stopTigrThread() {
+void stopTigr() {
     writeTigrMessage(TigrMessageData{
         .message = DESTROY,
     });
 }
 
-void setTigrWindow(ANativeWindow* window) {
+void setTigrWindow(ANativeWindow* newWindow) {
+    window = newWindow;
     writeTigrMessage(TigrMessageData{
         .message = SET_WINDOW,
         .window = window,
     });
 }
 
-void resetTigrWindow(ANativeWindow* window) {
+void resetTigrWindow(ANativeWindow* oldWindow) {
     writeTigrMessage(TigrMessageData{
         .message = RESET_WINDOW,
+        .window = window,
+    });
+    window = nullptr;
+}
+
+void refreshTigrWindow() {
+    writeTigrMessage(TigrMessageData{
+        .message = RESET_WINDOW,
+        .window = window,
+    });    
+    writeTigrMessage(TigrMessageData{
+        .message = SET_WINDOW,
         .window = window,
     });
 }
@@ -208,4 +228,27 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
     }
 
     return eventID >= 0 ? 1 : 0;
+}
+
+extern "C" void* android_loadAsset(const char* filename, int* length) {
+    void* assetBuffer = 0;
+
+    AAsset* asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
+    if (asset == 0) {
+        *length = 0;
+        return assetBuffer;
+    }
+
+    const void* assetData = AAsset_getBuffer(asset);
+    if (assetData != 0) {
+        size_t length = AAsset_getLength(asset);
+        char* assetBuffer = (char*)malloc(length + 1);
+        if (assetBuffer != 0) {
+            assetBuffer[length] = 0;
+            memcpy(assetBuffer, assetData, length);
+        }
+    }
+
+    AAsset_close(asset);
+    return assetBuffer;
 }
