@@ -1,11 +1,11 @@
 #ifndef TIGR_GLUE_H
 #define TIGR_GLUE_H
 
-#include <android/asset_manager.h>
+#include <android/native_activity.h>
 #include <android/native_window.h>
 #include <android/input.h>
 
-void startTigr(AAssetManager* assetManager);
+void startTigr(ANativeActivity* activity);
 void stopTigr();
 void setTigrWindow(ANativeWindow* window);
 void resetTigrWindow(ANativeWindow* window);

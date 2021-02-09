@@ -24,9 +24,11 @@ void setImmersiveMode(JavaVM* vm, jobject activity) {
 }
 
 static void onStart(ANativeActivity* activity) {
+    LOGD("Start!");
 }
 
 static void onResume(ANativeActivity* activity) {
+    LOGD("Resume!");
     setImmersiveMode(activity->vm, activity->clazz);
 }
 
@@ -35,12 +37,15 @@ static void* onSaveInstanceState(ANativeActivity* activity, size_t* outSize) {
 }
 
 static void onPause(ANativeActivity* activity) {
+    LOGD("Pause!");
 }
 
 static void onStop(ANativeActivity* activity) {
+    LOGD("Stop!");
 }
 
 static void onDestroy(ANativeActivity* activity) {
+    LOGD("Destroy!");
     stopTigr();
     SwappyGL_destroy();
 }
@@ -78,6 +83,7 @@ static void onLowMemory(ANativeActivity* activity) {
 
 JNIEXPORT
 void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_t savedStateSize) {
+    LOGD("Create!");
     activity->callbacks->onStart = onStart;
     activity->callbacks->onResume = onResume;
     activity->callbacks->onSaveInstanceState = onSaveInstanceState;
@@ -99,7 +105,6 @@ void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_
     JNIEnv* env;
     activity->vm->GetEnv((void**)&env, JNI_VERSION_1_6);
     SwappyGL_init(env, activity->clazz);
-    SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_30FPS);
 
-    startTigr(activity->assetManager);
+    startTigr(activity);
 }

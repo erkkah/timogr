@@ -22,21 +22,31 @@ typedef enum {
     INPUT_ID,
 } LooperID;
 
-pthread_t tigrThread;
+pthread_t tigrThread = 0;
 pthread_mutex_t tokenLock;
 pthread_cond_t tokenCond;
+
+typedef enum {
+    TIGR_ALIVE,
+    TIGR_DYING,
+    TIGR_DEAD,
+} ThreadState;
+
+int tigrThreadState = TIGR_DEAD;
 
 int messageReadFd;
 int messageWriteFd;
 
 AInputQueue* inputQueue;
 ALooper* looper;
-AAssetManager* assetManager;
+ANativeActivity* activity;
 ANativeWindow* window;
 
 void waitForTigrThread() {
     pthread_mutex_lock(&tokenLock);
-    pthread_cond_wait(&tokenCond, &tokenLock);
+    if (tigrThreadState == TIGR_ALIVE) {
+        pthread_cond_wait(&tokenCond, &tokenLock);
+    }
     pthread_mutex_unlock(&tokenLock);
 }
 
@@ -61,6 +71,9 @@ struct TigrMessageData {
 };
 
 void writeTigrMessage(TigrMessageData messageData) {
+    if (tigrThreadState == TIGR_DEAD) {
+        return;
+    }
     if (write(messageWriteFd, &messageData, sizeof(messageData)) != sizeof(messageData)) {
         LOGE("Failed to write tigr message: %s", strerror(errno));
     } else {
@@ -76,8 +89,8 @@ void readTigrMessage(TigrMessageData* messageData) {
 
 }  // namespace
 
-void startTigr(AAssetManager* mgr) {
-    assetManager = mgr;
+void startTigr(ANativeActivity* a) {
+    activity = a;
 
     int fds[2];
     if (!pipe(fds)) {
@@ -98,7 +111,20 @@ void startTigr(AAssetManager* mgr) {
             looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
             ALooper_addFd(looper, messageReadFd, MAIN_ID, ALOOPER_EVENT_INPUT, nullptr, nullptr);
 
+            tigrThreadState = TIGR_ALIVE;
             tigrMain();
+
+            if (inputQueue != 0) {
+                AInputQueue_detachLooper(inputQueue);
+            }
+
+            if (tigrThreadState == TIGR_ALIVE) {
+                tigrThreadState = TIGR_DYING;
+                ANativeActivity_finish(activity);
+            }
+
+            tigrThreadState = TIGR_DEAD;
+            tigrThread = 0;
 
             return nullptr;
         },
@@ -106,9 +132,26 @@ void startTigr(AAssetManager* mgr) {
 }
 
 void stopTigr() {
-    writeTigrMessage(TigrMessageData{
-        .message = DESTROY,
-    });
+    if (tigrThreadState == TIGR_ALIVE) {
+        tigrThreadState = TIGR_DYING;
+        writeTigrMessage(TigrMessageData{
+            .message = DESTROY,
+        });
+    }
+
+    if (tigrThread != 0) {
+        pthread_join(tigrThread, nullptr);
+    }
+
+    pthread_cond_destroy(&tokenCond);
+    pthread_mutex_destroy(&tokenLock);
+    close(messageReadFd);
+    close(messageWriteFd);
+
+    inputQueue = nullptr;
+    looper = nullptr;
+    activity = nullptr;
+    window = nullptr;
 }
 
 void setTigrWindow(ANativeWindow* newWindow) {
@@ -131,7 +174,7 @@ void refreshTigrWindow() {
     writeTigrMessage(TigrMessageData{
         .message = RESET_WINDOW,
         .window = window,
-    });    
+    });
     writeTigrMessage(TigrMessageData{
         .message = SET_WINDOW,
         .window = window,
@@ -233,7 +276,7 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
 extern "C" void* android_loadAsset(const char* filename, int* length) {
     void* assetBuffer = 0;
 
-    AAsset* asset = AAssetManager_open(assetManager, filename, AASSET_MODE_BUFFER);
+    AAsset* asset = AAssetManager_open(activity->assetManager, filename, AASSET_MODE_BUFFER);
     if (asset == 0) {
         *length = 0;
         return assetBuffer;
