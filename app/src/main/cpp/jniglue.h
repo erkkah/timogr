@@ -49,6 +49,11 @@ class JNIGlue {
         return _env->GetStaticIntField(clazz, fieldID);
     }
 
+    void throwException(const char* message) {
+        jclass clazz = _env->FindClass("java/lang/Exception");
+        _env->ThrowNew(clazz, message);
+    }
+
    private:
     void checkException() {
         if (_env->ExceptionCheck()) {

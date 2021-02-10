@@ -1,5 +1,6 @@
 #include "tigrglue.h"
 
+#include <assert.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -12,10 +13,14 @@
 
 #include "/Users/erik/src/tigr/src/tigr_android.h"
 #include "log.h"
+#include "jniglue.h"
 
 extern "C" void tigrMain();
 
 namespace {
+
+/// Global state, Highlander style.
+/// There can be only one instance of the TiGr native activity.
 
 typedef enum {
     MAIN_ID,
@@ -25,9 +30,11 @@ typedef enum {
 pthread_t tigrThread = 0;
 pthread_mutex_t tokenLock;
 pthread_cond_t tokenCond;
+pthread_cond_t resumeCond;
 
 typedef enum {
     TIGR_ALIVE,
+    TIGR_PAUSED,
     TIGR_DYING,
     TIGR_DEAD,
 } ThreadState;
@@ -41,6 +48,21 @@ AInputQueue* inputQueue;
 ALooper* looper;
 ANativeActivity* activity;
 ANativeWindow* window;
+
+typedef enum {
+    SET_WINDOW,
+    RESET_WINDOW,
+    SET_INPUT,
+    RESET_INPUT,
+    CLOSE,
+    PAUSE,
+} TigrMessage;
+
+struct TigrMessageData {
+    TigrMessage message;
+    ANativeWindow* window;
+    AInputQueue* queue;
+};
 
 void waitForTigrThread() {
     pthread_mutex_lock(&tokenLock);
@@ -56,22 +78,22 @@ void notifyMainThread() {
     pthread_mutex_unlock(&tokenLock);
 }
 
-typedef enum {
-    SET_WINDOW,
-    RESET_WINDOW,
-    SET_INPUT,
-    RESET_INPUT,
-    DESTROY,
-} TigrMessage;
+void waitForResume() {
+    pthread_mutex_lock(&tokenLock);
+    pthread_cond_wait(&resumeCond, &tokenLock);
+    pthread_mutex_unlock(&tokenLock);
+}
 
-struct TigrMessageData {
-    TigrMessage message;
-    ANativeWindow* window;
-    AInputQueue* queue;
-};
+void notifyResume() {
+    pthread_mutex_lock(&tokenLock);
+    tigrThreadState = TIGR_ALIVE;
+    pthread_cond_broadcast(&resumeCond);
+    pthread_mutex_unlock(&tokenLock);
+}
 
 void writeTigrMessage(TigrMessageData messageData) {
-    if (tigrThreadState == TIGR_DEAD) {
+    if (tigrThreadState == TIGR_DEAD || tigrThreadState == TIGR_PAUSED) {
+        LOGD("Skipping message %d to dead or paused thread", messageData.message);
         return;
     }
     if (write(messageWriteFd, &messageData, sizeof(messageData)) != sizeof(messageData)) {
@@ -90,21 +112,27 @@ void readTigrMessage(TigrMessageData* messageData) {
 }  // namespace
 
 void startTigr(ANativeActivity* a) {
+    assert(activity == 0);
     activity = a;
 
+    tigr_android_create();
+
     int fds[2];
-    if (!pipe(fds)) {
-        // handle error
+    if (pipe(fds) != 0) {
+        JNIGlue glue(activity->vm);
+        glue.throwException("Failed to create communication pipe");
+        return;
     }
     messageReadFd = fds[0];
     messageWriteFd = fds[1];
 
     pthread_mutex_init(&tokenLock, NULL);
     pthread_cond_init(&tokenCond, NULL);
+    pthread_cond_init(&resumeCond, NULL);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     pthread_create(
         &tigrThread, &attr,
         [](void*) -> void* {
@@ -112,16 +140,19 @@ void startTigr(ANativeActivity* a) {
             ALooper_addFd(looper, messageReadFd, MAIN_ID, ALOOPER_EVENT_INPUT, nullptr, nullptr);
 
             tigrThreadState = TIGR_ALIVE;
+
             tigrMain();
 
             if (inputQueue != 0) {
                 AInputQueue_detachLooper(inputQueue);
             }
 
+            pthread_mutex_lock(&tokenLock);
             if (tigrThreadState == TIGR_ALIVE) {
                 tigrThreadState = TIGR_DYING;
                 ANativeActivity_finish(activity);
             }
+            pthread_mutex_unlock(&tokenLock);
 
             tigrThreadState = TIGR_DEAD;
             tigrThread = 0;
@@ -129,20 +160,53 @@ void startTigr(ANativeActivity* a) {
             return nullptr;
         },
         nullptr);
+
+    pthread_setname_np(tigrThread, "TiGr render thread");
+#ifndef NDEBUG
+    pid_t threadID = pthread_gettid_np(tigrThread);
+    LOGD("Render thread %d started", threadID);
+#endif
+}
+
+void pauseTigr() {
+    LOGD("Pausing");
+    writeTigrMessage(TigrMessageData{
+        .message = PAUSE,
+    });
+    LOGD("Paused");
+}
+
+void resumeTigr() {
+    notifyResume();
 }
 
 void stopTigr() {
+    LOGD("Stopping tigr");
+
+    // Wake the tigr, if paused
+    notifyResume();
+
+    pthread_mutex_lock(&tokenLock);
     if (tigrThreadState == TIGR_ALIVE) {
         tigrThreadState = TIGR_DYING;
-        writeTigrMessage(TigrMessageData{
-            .message = DESTROY,
-        });
     }
+    pthread_mutex_unlock(&tokenLock);
 
     if (tigrThread != 0) {
-        pthread_join(tigrThread, nullptr);
+        writeTigrMessage(TigrMessageData{
+            .message = CLOSE,
+        });
+
+        LOGD("Waiting for tigr thread");
+        void* retval = 0;
+        int res = pthread_join(tigrThread, &retval);
+        if (res != 0) {
+            LOGE("Failed to join: %s", strerror(res));
+        }
+        LOGD("Tigr is dead");
     }
 
+    pthread_cond_destroy(&resumeCond);
     pthread_cond_destroy(&tokenCond);
     pthread_mutex_destroy(&tokenLock);
     close(messageReadFd);
@@ -152,6 +216,8 @@ void stopTigr() {
     looper = nullptr;
     activity = nullptr;
     window = nullptr;
+
+    tigr_android_destroy();
 }
 
 void setTigrWindow(ANativeWindow* newWindow) {
@@ -195,6 +261,8 @@ void resetTigrInputQueue(AInputQueue* queue) {
     });
 }
 
+/// TiGr interface, called from render thread ///
+
 extern "C" void android_swap(EGLDisplay display, EGLSurface surface) {
     SwappyGL_swap(display, surface);
 }
@@ -234,10 +302,55 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
                     AInputQueue_detachLooper(messageData.queue);
                     inputQueue = nullptr;
                     break;
-                case DESTROY:
+                case PAUSE: {
+                    tigrThreadState = TIGR_PAUSED;
+
+                    // Notify the main thread to let it continue
+                    notifyMainThread();
+
+                    // Make tigr stop using the current window
+                    if (window != nullptr) {
+                        eventHandler(
+                            AndroidEvent{
+                                .type = AE_WINDOW_DESTROYED,
+                                .window = window,
+                            },
+                            userData);
+                    }
+
+                    // Now, wait for the _main_ thread to notify us.
+                    // This pauses the render thread while we are paused.
+                    waitForResume();
+
+                    // Get "now" timestamp
+                    struct timespec ts;
+                    clock_gettime(CLOCK_MONOTONIC, &ts);
+                    double now = (double)ts.tv_sec + (ts.tv_nsec / 1000000000.0);
+
+                    // Make tigr resume "now"
                     eventHandler(
                         AndroidEvent{
-                            .type = AE_ACTIVITY_DESTROYED,
+                            .type = AE_RESUME,
+                            .time = now,
+                        },
+                        userData);
+
+                    // Make tigr use current window, if any
+                    if (window != nullptr) {
+                        eventHandler(
+                            AndroidEvent{
+                                .type = AE_WINDOW_CREATED,
+                                .window = window,
+                            },
+                            userData);
+                    }
+
+                    break;
+                }
+                case CLOSE:
+                    eventHandler(
+                        AndroidEvent{
+                            .type = AE_CLOSE,
                         },
                         userData);
                     break;

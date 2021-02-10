@@ -6,6 +6,8 @@
 #include <android/input.h>
 
 void startTigr(ANativeActivity* activity);
+void pauseTigr();
+void resumeTigr();
 void stopTigr();
 void setTigrWindow(ANativeWindow* window);
 void resetTigrWindow(ANativeWindow* window);
