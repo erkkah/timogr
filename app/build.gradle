@@ -5,7 +5,7 @@ android {
     ndkVersion '21.0.6113669'
 
     defaultConfig {
-        applicationId "com.sedgelake.timogr"
+        applicationId "com.example.timogr"
         minSdkVersion 21
         targetSdkVersion 28
         externalNativeBuild {
@@ -34,8 +34,4 @@ android {
 
 dependencies {
     implementation "androidx.games:games-frame-pacing:1.7.0-beta01"
-    // implementation fileTree(dir: 'libs', include: ['*.jar'])
-    // implementation 'androidx.appcompat:appcompat:1.0.2'
-    // implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
-
 }

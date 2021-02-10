@@ -1,11 +1,68 @@
-# TiMoGr ?
+# TIMOGR - TIny MObile GRaphics starter
 
-https://developer.android.com/studio#command-tools
+TIMOGR is a tiny Android starter template for writing fullscreen graphics apps using the TIGR library.
 
-sdkmanager
+Like TIGR, TIMOGR is designed to be small and mostly independent.
+The "hello world" compressed arm64-v8a release bundle is less than 350kB.
 
-https://developer.okta.com/blog/2018/08/10/basic-android-without-an-ide
+TIMOGR takes care of the Android life-cycle stuff and lets you write the fun part of your little app.
+Oh, and you don't need Android Studio - it works just fine with the plain Android SDK + NDK.
 
+## Getting started
 
-https://github.com/android/ndk-samples/blob/main/native-activity/app/src/main/cpp/main.cpp
+* Clone this repo
+* Install Android SDK (or Android Studio)
+* If not already in place, install the Android NDK (Use sdkmanager or Android Studio)
+* Make sure ANDROID_SDK_ROOT is set
+* Run a test build: `./gradlew build` (that's `gradlew.bat build` on Windows)
+* Tweak `app/build/build.gradle` if the test build complains about `compileSdkVersion` or `ndkVersion`
+* Plug in your device (or run an emulator), and run `./gradlew installDebug` to install the template TIMOGR app
+* Run the app (and report back if there are problems)
 
+Now, replace the meat of `app/src/main/cpp/main.c` with your TIGR code, and you're done.
+
+Just like the desktop TIGR apps, they can be as tiny as this:
+
+```C
+#include "tigr.h"
+
+void tigrMain()
+{
+    Tigr *screen = tigrWindow(320, 240, "Hello", TIGR_4X);
+    while (!tigrClosed(screen))
+    {
+        tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
+        tigrPrint(screen, tfont, 120, 110, tigrRGB(0xff, 0xff, 0xff), "Hello, world.");
+        tigrUpdate(screen);
+    }
+    tigrFree(screen);
+}
+```
+
+## Some details and pointers
+
+### Input
+Since most Android devices are not used with physical keyboards, there is currently no keyboard support. The "buttons" reported by `tigrMouse` is the number of detected touch points, the position is always of the last triggered touch point. So, currently - there is no real multitouch support.
+
+### Threads and extending the Android side
+The `tigrMain` entry point runs on a rendering thread separate from the Activity main thread. If you need to do more Android specifics, check out the Activity implementation in `tigractivity.cpp`.
+
+### Files and assets
+Reading "files" by using `tigrLoadImage` for example, reads from the corresponding asset path. Putting `image.png` at `app/src/main/assets` will make it loadable from `/image.png`.
+
+Writing files (`tigrSaveImage`) will write to the given path. TIMOGR will not redirect writes to the app internal storage.
+
+### C/C++
+You can of course replace main.c with main.cpp if you want. Just update `CMakeLists.txt` and declare `tigrMain` as `extern "C"`:
+
+```C++
+extern "C" void tigrMain() {
+    // ...
+}
+```
+
+### Building a "real" app
+You can make a distributable app based on TIMOGR. There is plenty of information of the steps involved on the [Android developer site](https://developer.android.com/studio/publish). Start by changing the application ID in `app/build.gradle`.
+
+### Adding more activities
+There can be only one instance of the TIMOGR native activity. If you need another instance, you could theoretically add another native library target in `CMakeLists.txt` and refer to that in the second activity declaration in `AndroidManifest.xml`.

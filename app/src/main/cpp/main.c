@@ -1,7 +1,10 @@
 #include "/Users/erik/src/tigr/tigr.h"
 #include <stdio.h>
 
-extern "C" void tigrMain() {
+/**
+ * TiGr entry point.
+ */
+void tigrMain() {
     Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_4X);
     int x;
     int y;
@@ -11,14 +14,10 @@ extern "C" void tigrMain() {
     int textHeight = tigrTextHeight(tfont, message);
     int textWidth = tigrTextWidth(tfont, message);
 
-    tigrTime();
     float liveTime = 0;
 
     while (!tigrClosed(screen)) {
         liveTime += tigrTime();
-        if (liveTime > 5) {
-            break;
-        }
 
         tigrMouse(screen, &x, &y, &buttons);
         tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
