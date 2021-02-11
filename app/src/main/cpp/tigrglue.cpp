@@ -20,7 +20,7 @@ extern "C" void tigrMain();
 namespace {
 
 /// Global state, Highlander style.
-/// There can be only one instance of the TiGr native activity.
+/// There can be only one instance of the TIGR native activity.
 
 typedef enum {
     MAIN_ID,
@@ -161,7 +161,7 @@ void startTigr(ANativeActivity* a) {
         },
         nullptr);
 
-    pthread_setname_np(tigrThread, "TiGr render thread");
+    pthread_setname_np(tigrThread, "TIGR render thread");
 #ifndef NDEBUG
     pid_t threadID = pthread_gettid_np(tigrThread);
     LOGD("Render thread %d started", threadID);
@@ -261,7 +261,7 @@ void resetTigrInputQueue(AInputQueue* queue) {
     });
 }
 
-/// TiGr interface, called from render thread ///
+/// TIGR interface, called from render thread ///
 
 extern "C" void android_swap(EGLDisplay display, EGLSurface surface) {
     SwappyGL_swap(display, surface);

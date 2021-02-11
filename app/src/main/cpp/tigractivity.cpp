@@ -1,16 +1,16 @@
 /**
- * Native activity implementation for hosting TiGr - based apps.
+ * Native activity implementation for hosting TIGR - based apps.
  * 
  * It hooks the most relevant activity callbacks and calls
- * the glue layer in "tigrglue.cpp" to keep the TiGr internals
+ * the glue layer in "tigrglue.cpp" to keep the TIGR internals
  * happy.
  *
- * The TiGr main entrypoint is "tigrMain()", which will run
+ * The TIGR main entrypoint is "tigrMain()", which will run
  * on a separate thread. If "tigrMain()" exits, the app will
  * too.
  * 
- * For simple TiGr - based apps, just implement "tigrMain()"
- * using the TiGr API.
+ * For simple TIGR - based apps, just implement "tigrMain()"
+ * using the TIGR API.
  * 
  * To extend the Android side of things, feel free to extend
  * this activity implemention with what you need.
