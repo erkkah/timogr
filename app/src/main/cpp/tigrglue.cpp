@@ -386,23 +386,30 @@ extern "C" int android_pollEvent(int (*eventHandler)(AndroidEvent event, void* u
     return eventID >= 0 ? 1 : 0;
 }
 
-extern "C" void* android_loadAsset(const char* filename, int* length) {
-    void* assetBuffer = 0;
+extern "C" void* android_loadAsset(const char* filename, int* oLength) {
+    LOGD("Loading asset \"%s\"", filename);
+    char* assetBuffer = 0;
 
     AAsset* asset = AAssetManager_open(activity->assetManager, filename, AASSET_MODE_BUFFER);
     if (asset == 0) {
-        *length = 0;
+        LOGI("Failed to load asset \"%s\"", filename);
+        *oLength = 0;
         return assetBuffer;
     }
 
     const void* assetData = AAsset_getBuffer(asset);
     if (assetData != 0) {
         size_t length = AAsset_getLength(asset);
-        char* assetBuffer = (char*)malloc(length + 1);
+        assetBuffer = (char*)malloc(length + 1);
         if (assetBuffer != 0) {
             assetBuffer[length] = 0;
             memcpy(assetBuffer, assetData, length);
+            *oLength = length;
+        } else {
+            LOGE("Failed to allocate asset data");
         }
+    } else {
+        LOGE("Failed to get asset buffer");
     }
 
     AAsset_close(asset);
