@@ -1,4 +1,4 @@
-# TIMOGR - TIny MObile GRaphics starter
+# TIMOGR - TIny MObile GRaphics starter template
 
 ![](./app/src/main/assets/timogr.png)
 
@@ -13,7 +13,8 @@ Oh, and you don't need Android Studio - it works just fine with the plain Androi
 
 ## Getting started
 
-* Clone this repo
+* [Generate](https://github.com/erkkah/timogr/generate) your own repo based on this template
+* Clone your new repo to get the files to your machine
 * Install Android SDK (or Android Studio)
 * If not already in place, install the Android NDK (Use sdkmanager or Android Studio)
 * Make sure ANDROID_SDK_ROOT is set
