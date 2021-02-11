@@ -42,7 +42,9 @@ void tigrMain()
 ## Some details and pointers
 
 ### Input
-Since most Android devices are not used with physical keyboards, there is currently no keyboard support. The "buttons" reported by `tigrMouse` is the number of detected touch points, the position is always of the last triggered touch point. So, currently - there is no real multitouch support.
+* Since most Android devices are not used with physical keyboards, there is currently no keyboard support.
+* The "buttons" reported by `tigrMouse` is the number of detected touch points, the position is always of the last triggered touch point.
+* Use `tigrTouch` to process multi-touch input.
 
 ### Threads and extending the Android side
 The `tigrMain` entry point runs on a rendering thread separate from the Activity main thread. If you need to do more Android specifics, check out the Activity implementation in `tigractivity.cpp`.
