@@ -1,6 +1,9 @@
 # TIMOGR - TIny MObile GRaphics starter
 
-TIMOGR is a tiny Android starter template for writing fullscreen graphics apps using the TIGR library.
+![](./app/src/main/assets/timogr.png)
+
+TIMOGR is a tiny Android starter template for writing fullscreen graphics apps using the
+[TIGR](https://github.com/erkkah/tigr) library.
 
 Like TIGR, TIMOGR is designed to be small and mostly independent.
 The "hello world" compressed arm64-v8a release bundle is less than 350kB.
@@ -21,7 +24,7 @@ Oh, and you don't need Android Studio - it works just fine with the plain Androi
 
 Now, replace the meat of `app/src/main/cpp/main.c` with your TIGR code, and you're done.
 
-Just like the desktop TIGR apps, they can be as tiny as this:
+Just like with desktop TIGR, the code can be as tiny as this:
 
 ```C
 #include "tigr.h"
