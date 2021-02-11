@@ -4,6 +4,13 @@
 # Ignore Gradle build output directory
 build
 
+# macOS lint
 .DS_Store
 
+# build temporaries
 **/.cxx
+
+# Android studio lint
+.idea
+local.properties
+*.iml
