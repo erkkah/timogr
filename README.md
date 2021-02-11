@@ -2,7 +2,7 @@
 
 ![](./app/src/main/assets/timogr.png)
 
-TIMOGR is a tiny Android starter template for writing fullscreen graphics apps using the
+TIMOGR is a tiny Android starter template for creating fullscreen 2D apps using the
 [TIGR](https://github.com/erkkah/tigr) library.
 
 Like TIGR, TIMOGR is designed to be small and mostly independent.
