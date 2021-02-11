@@ -1,4 +1,4 @@
-#include "/Users/erik/src/tigr/tigr.h"
+#include "tigr.h"
 #include <stdio.h>
 
 /**

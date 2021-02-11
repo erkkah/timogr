@@ -11,7 +11,7 @@
 
 #include "swappy/swappyGL.h"
 
-#include "/Users/erik/src/tigr/src/tigr_android.h"
+#include "src/tigr_android.h"
 #include "log.h"
 #include "jniglue.h"
 
