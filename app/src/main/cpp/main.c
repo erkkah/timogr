@@ -1,11 +1,12 @@
 #include "tigr.h"
 #include <stdio.h>
+#include <errno.h>
 
 /**
  * TIGR entry point.
  */
 void tigrMain() {
-    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_4X);
+    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_2X);
 
     int x;
     int y;
@@ -18,6 +19,11 @@ void tigrMain() {
 
     float liveTime = 0;
 
+    Tigr* logo = tigrLoadImage("timogr.png");
+    if (!logo) {
+        tigrError(0, "Failed to load image: %d", errno);
+    }
+
     while (!tigrClosed(screen)) {
         liveTime += tigrTime();
 
@@ -25,6 +31,9 @@ void tigrMain() {
         int numTouches = tigrTouch(screen, touchPoints, 3);
 
         tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
+
+        int logoX = (screen->w - logo->w) / 2;
+        tigrBlitAlpha(screen, logo, logoX, 10, 0, 0, logo->w, logo->h, numTouches > 0 ? 0.5 : 1);
 
         TPixel mouseLineColor = tigrRGB(0, 0, 0);
         if (buttons != 0) {
