@@ -5,10 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <sys/time.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xlocale.h>
+#include <X11/XKBlib.h>
 #include <GL/glx.h>
 
 static Display *dpy;
@@ -113,6 +115,32 @@ static void setupVSync(Display* display, Window win) {
 	}
 }
 
+static void tigrHideCursor(TigrInternal *win) {
+	Cursor invisibleCursor;
+	Pixmap bitmapNoData;
+	XColor black;
+	static char noData[] = { 0,0,0,0,0,0,0,0 };
+	black.red = black.green = black.blue = 0;
+
+	bitmapNoData = XCreateBitmapFromData(win->dpy, win->win, noData, 8, 8);
+	invisibleCursor = XCreatePixmapCursor(win->dpy, bitmapNoData, bitmapNoData, 
+										&black, &black, 0, 0);
+	XDefineCursor(win->dpy, win->win, invisibleCursor);
+	XFreeCursor(win->dpy, invisibleCursor);
+	XFreePixmap(win->dpy, bitmapNoData);
+}
+
+
+
+typedef struct {
+	unsigned long flags;
+	unsigned long functions;
+	unsigned long decorations;
+	long          inputMode;
+	unsigned long status;
+} WindowHints;
+
+
 Tigr *tigrWindow(int w, int h, const char *title, int flags) {
 	Tigr* bmp = 0;
 	Colormap cmap;
@@ -125,13 +153,13 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags) {
 	initX11Stuff();
 
 	if (flags & TIGR_AUTO) {
-		// Always use a 1:1 pixel size.
+		// Always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
 		scale = 1;
 	} else {
 		// See how big we can make it and still fit on-screen.
 		Screen *screen = DefaultScreenOfDisplay(dpy);
-		int maxW = WidthOfScreen(screen) * 3/4;
-		int maxH = HeightOfScreen(screen) * 3/4;
+		int maxW = WidthOfScreen(screen);
+		int maxH = HeightOfScreen(screen);
 		scale = tigrCalcScale(w, h, maxW, maxH);
 	}
 
@@ -139,13 +167,44 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags) {
 
 	cmap = XCreateColormap(dpy, root, vi->visual, AllocNone);
 	swa.colormap = cmap;
-	swa.event_mask = ExposureMask | StructureNotifyMask |
-		KeyPressMask | KeyReleaseMask |
-		ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+	swa.event_mask = StructureNotifyMask;
 
+	// Create window of wanted size
 	xwin = XCreateWindow(dpy, root, 0, 0, w * scale, h * scale, 0, vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
-
 	XMapWindow(dpy, xwin);
+
+	if (flags & TIGR_FULLSCREEN) {
+		// https://www.tonyobryan.com//index.php?article=9
+		WindowHints hints;
+		Atom property;
+		hints.flags = 2;
+		hints.decorations = 0;
+		property = XInternAtom(dpy, "_MOTIF_WM_HINTS", True);
+		XChangeProperty(dpy, xwin, property, property, 32, PropModeReplace, (unsigned char *)&hints, 5);
+		int screen = DefaultScreen(dpy);
+		int dWidth = DisplayWidth(dpy, screen);
+		int dHeight = DisplayHeight(dpy, screen);
+		XMoveResizeWindow(dpy, xwin, 0, 0, dWidth, dHeight);
+		XMapRaised(dpy, xwin);
+		XGrabPointer(dpy, xwin, True, 0, GrabModeAsync, GrabModeAsync, xwin, 0L, CurrentTime);
+		XGrabKeyboard(dpy, xwin, False, GrabModeAsync, GrabModeAsync, CurrentTime);
+	} else  {
+		// Wait for window to get mapped
+		for(;;) {
+			XEvent e;
+			XNextEvent(dpy, &e);
+			if (e.type == MapNotify) {
+				break;
+			}
+		}
+
+		// Reset size if we did not get the window size we wanted above.
+		XWindowAttributes wa;
+		XGetWindowAttributes(dpy, xwin, &wa);
+		scale = tigrCalcScale(w, h, wa.width, wa.height);
+		scale = tigrEnforceScale(scale, flags);
+		XResizeWindow(dpy, xwin, w * scale, h * scale);
+	}
 
 	XTextProperty prop;
 	int result = Xutf8TextListToTextProperty(dpy, (char**) &title, 1, XUTF8StringStyle, &prop);
@@ -190,14 +249,20 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags) {
 
 	win->lastChar = 0;
 	win->flags = flags;
-	win->hblur = win->vblur = 0;
-	win->scanlines = 0.0f;
-	win->contrast = 1.0f;
+	win->p1 = win->p2 = win->p3 = 0;
+	win->p4 = 1;
 	win->widgetsWanted = 0;
 	win->widgetAlpha = 0;
 	win->widgetsScale = 0;
 	win->widgets = 0;
 	win->gl.gl_legacy = 0;
+
+	memset(win->keys, 0, 256);
+	memset(win->prev, 0, 256);
+
+	if (flags & TIGR_NOCURSOR) {
+		tigrHideCursor(win);
+	}
 
 	tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
  	tigrGAPICreate(bmp);
@@ -337,6 +402,101 @@ static void tigrUpdateModifiers(TigrInternal *win) {
     win->keys[TK_ALT] = win->keys[TK_LALT] || win->keys[TK_RALT];
 }
 
+static void tigrInterpretChar(TigrInternal* win, Window root, unsigned int keycode, unsigned int mask) {
+	XKeyEvent event;
+	memset(&event, 0, sizeof(event));
+	event.type = KeyPress;
+	event.display = win->dpy;
+	event.root = root;
+	event.window = win->win;
+	event.state = mask;
+	event.keycode = keycode;
+	char inputTextUTF8[10];
+	Status status = 0;
+	Xutf8LookupString(win->ic, &event, inputTextUTF8, sizeof(inputTextUTF8), NULL, &status);
+
+	if(status == XLookupChars) {
+		tigrDecodeUTF8(inputTextUTF8, &win->lastChar);
+	}
+}
+
+static void tigrProcessInput(TigrInternal* win, int winWidth, int winHeight) {
+	{
+		Window focused;
+		int revertTo;
+		XGetInputFocus(win->dpy, &focused, &revertTo);
+
+		if (win->win != focused) {
+			return;
+		}
+	}
+
+	Window root;
+	Window child;
+	int rootX;
+	int rootY;
+	int winX;
+	int winY;
+	unsigned int mask;
+
+	if (XQueryPointer(win->dpy, win->win, &root, &child, &rootX, &rootY, &winX, &winY, &mask)) {
+		static unsigned int prevButtons;
+		unsigned int buttons = mask & (Button1Mask | Button2Mask | Button3Mask);
+
+		win->mouseX = (winX - win->pos[0]) / win->scale;
+		win->mouseY = (winY - win->pos[1]) / win->scale;
+
+		if (buttons != prevButtons && (winX > 0 && winX < winWidth) && (winY > 0 && winY < winHeight)) {
+			win->mouseButtons = 
+				(buttons & Button1Mask) ? 1 : 0 |
+				(buttons & Button3Mask) ? 2 : 0 |
+				(buttons & Button2Mask) ? 4 : 0 ;
+		}
+		prevButtons = buttons;
+	}
+
+	static char prevKeys[32];
+	char keys[32];
+	XQueryKeymap(win->dpy, keys);
+	for (int i = 0; i < 32; i++) {
+		char thisBlock = keys[i];
+		char prevBlock = prevKeys[i];
+		if (thisBlock != prevBlock) {
+			for (int j = 0; j < 8; j++) {
+				int thisBit = thisBlock & 1;
+				int prevBit = prevBlock & 1;
+				thisBlock >>= 1;
+				prevBlock >>= 1;
+				if (thisBit != prevBit) {
+					int keyCode = 8 * i + j;
+					KeySym keySym = XkbKeycodeToKeysym(win->dpy, keyCode, 0, 0);
+					if (keySym != NoSymbol) {
+						int key = tigrKeyFromX11(keySym);
+						win->keys[key] = thisBit;
+						tigrUpdateModifiers(win);
+
+						if (thisBit) {
+							tigrInterpretChar(win, root, keyCode, mask);
+						}
+					}
+				}
+			}
+		}
+	}
+	memcpy(prevKeys, keys, 32);
+
+	XEvent event;
+	while (XCheckTypedWindowEvent(win->dpy, win->win, ClientMessage, &event)) {
+		if(event.xclient.data.l[0] == wmDeleteMessage) {
+			glXMakeCurrent(win->dpy, None, NULL);
+			glXDestroyContext(win->dpy, win->glc);
+			XDestroyWindow(win->dpy, win->win);
+			win->win = 0;
+		}
+	}
+	XFlush(win->dpy);
+}
+
 void tigrUpdate(Tigr *bmp) {
 	XWindowAttributes gwa;
 
@@ -356,89 +516,7 @@ void tigrUpdate(Tigr *bmp) {
 	tigrGAPIPresent(bmp, gwa.width, gwa.height);
 	glXSwapBuffers(win->dpy, win->win);
 
-	XEvent event;
-	int eventMask = ExposureMask | KeyPressMask | KeyReleaseMask | PointerMotionMask | ButtonPressMask | ButtonReleaseMask ;	
-	while(XCheckWindowEvent(win->dpy, win->win, eventMask, &event)) {
-
-		switch(event.type) {
-			case Expose:
-				XGetWindowAttributes(win->dpy, win->win, &gwa);
-				glXMakeCurrent(win->dpy, win->win, win->glc);
-				tigrGAPIPresent(bmp, gwa.width, gwa.height);
-				glXSwapBuffers(win->dpy, win->win);
-				memset(win->keys, 0, 256);
-				memset(win->prev, 0, 256);
-				break;
-			case KeyPress:
-				{
-					KeySym keysym = 0;
-					char inputTextUTF8[10];
-					Status status = 0;
-                	int count = Xutf8LookupString(win->ic, &event.xkey, inputTextUTF8, sizeof(inputTextUTF8), NULL, &status);
-
-                	if(status == XLookupChars) {
-						tigrDecodeUTF8(inputTextUTF8, &win->lastChar);
-					}
-	                keysym = XLookupKeysym(&event.xkey, 0);
-	                int key = tigrKeyFromX11(keysym);
-	                win->keys[key] = 1;
-	                tigrUpdateModifiers(win);
-                }
-				break;
-			case KeyRelease:
-				{
-					KeySym keysym = XLookupKeysym(&event.xkey, 0);
-					uint8_t key = tigrKeyFromX11(keysym);
-					win->keys[key] = 0;
-					tigrUpdateModifiers(win);
-				}
-				break;
-			case MotionNotify:
-				win->mouseX = (event.xmotion.x - win->pos[0]) / win->scale;
-				win->mouseY = (event.xmotion.y - win->pos[1]) / win->scale;
-				break;
-			case ButtonRelease:
-				switch(event.xbutton.button) {
-					case Button1:
-						win->mouseButtons &= ~1;
-						break;
-					case Button2:
-						win->mouseButtons &= ~4;
-						break;
-					case Button3:
-						win->mouseButtons &= ~2;
-						break;
-				}
-				break;
-			case ButtonPress:
-				switch(event.xbutton.button) {
-					case Button1:
-						win->mouseButtons |= 1;
-						break;
-					case Button2:
-						win->mouseButtons |= 4;
-						break;
-					case Button3:
-						win->mouseButtons |= 2;
-						break;
-				}
-				break;
-			default:
-				break;
-		}
-	}
-	if (XCheckTypedEvent(win->dpy, ClientMessage, &event)) {
-		if (event.xclient.window == win->win) {
-			if(event.xclient.data.l[0] == wmDeleteMessage) {
-				glXMakeCurrent(win->dpy, None, NULL);
-				glXDestroyContext(win->dpy, win->glc);
-				XDestroyWindow(win->dpy, win->win);
-				win->win = 0;
-			}
-		} else {
-			XPutBackEvent(win->dpy, &event);
-		}
-	}
+	tigrProcessInput(win, gwa.width, gwa.height);
 }
 
 void tigrFree(Tigr *bmp) {
