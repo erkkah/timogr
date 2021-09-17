@@ -42,7 +42,13 @@ typedef CGPoint NSPoint;
 typedef CGSize NSSize;
 typedef CGRect NSRect;
 
-enum { NSKeyDown = 10, NSKeyUp = 11, NSKeyDownMask = 1 << NSKeyDown, NSKeyUpMask = 1 << NSKeyUp };
+enum {
+    NSKeyDown = 10,
+    NSKeyDownMask = 1 << NSKeyDown,
+    NSKeyUp = 11,
+    NSKeyUpMask = 1 << NSKeyUp,
+    NSAllEventMask = NSUIntegerMax,
+};
 
 extern id NSApp;
 extern id const NSDefaultRunLoopMode;
@@ -74,6 +80,19 @@ extern id const NSDefaultRunLoopMode;
 
 bool terminated = false;
 
+TigrInternal* _tigrInternalCocoa(id window) {
+    if (!window)
+        return NULL;
+
+    id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
+    if (!wdg)
+        return NULL;
+
+    Tigr* bmp = 0;
+    object_getInstanceVariable(wdg, "tigrHandle", (void**)&bmp);
+    return bmp ? tigrInternal(bmp) : NULL;
+}
+
 // we gonna construct objective-c class by hand in runtime, so wow, so hacker!
 NSUInteger applicationShouldTerminate(id self, SEL _sel, id sender) {
     terminated = true;
@@ -96,6 +115,24 @@ void windowDidBecomeKey(id self, SEL _sel, id notification) {
         memset(win->prev, 0, 256);
         win->lastChar = 0;
         win->mouseButtons = 0;
+    }
+}
+
+void mouseEntered(id self, SEL _sel, id event) {
+    id window = objc_msgSend_id(event, sel_registerName("window"));
+    TigrInternal* win = _tigrInternalCocoa(window);
+    win->mouseInView = 1;
+    if (win->flags & TIGR_NOCURSOR) {
+        objc_msgSend_id((id)objc_getClass("NSCursor"), sel_registerName("hide"));
+    }
+}
+
+void mouseExited(id self, SEL _sel, id event) {
+    id window = objc_msgSend_id(event, sel_registerName("window"));
+    TigrInternal* win = _tigrInternalCocoa(window);
+    win->mouseInView = 0;
+    if (win->flags & TIGR_NOCURSOR) {
+        objc_msgSend_id((id)objc_getClass("NSCursor"), sel_registerName("unhide"));
     }
 }
 
@@ -170,11 +207,14 @@ void tigrInitOSX() {
     objc_msgSend_void_id(menuBar, sel_registerName("addItem:"), appMenuItem);
     ((id(*)(id, SEL, id))objc_msgSend)(NSApp, sel_registerName("setMainMenu:"), menuBar);
 
-    id appMenuAlloc = objc_msgSend_id((id)objc_getClass("NSMenu"), sel_registerName("alloc"));
-    id appMenu = objc_msgSend_id(appMenuAlloc, sel_registerName("init"));
-
     id processInfo = objc_msgSend_id((id)objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
     id appName = objc_msgSend_id(processInfo, sel_registerName("processName"));
+
+    id appMenuAlloc = objc_msgSend_id((id)objc_getClass("NSMenu"), sel_registerName("alloc"));
+    id appMenu = ((id(*)(id, SEL, id))objc_msgSend)(
+        appMenuAlloc, sel_registerName("initWithTitle:"),
+        appName
+    );
 
     id quitTitlePrefixString =
         objc_msgSend_id_const_char((id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), "Quit ");
@@ -222,18 +262,15 @@ NSSize _tigrCocoaWindowSize(id window) {
     return rect.size;
 }
 
-TigrInternal* _tigrInternalCocoa(id window) {
-    if (!window)
-        return NULL;
-
-    id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
-    if (!wdg)
-        return NULL;
-
-    Tigr* bmp = 0;
-    object_getInstanceVariable(wdg, "tigrHandle", (void**)&bmp);
-    return bmp ? tigrInternal(bmp) : NULL;
-}
+enum {
+    NSWindowStyleMaskTitled = 1 << 0,
+    NSWindowStyleMaskClosable = 1 << 1,
+    NSWindowStyleMaskMiniaturizable = 1 << 2,
+    NSWindowStyleMaskResizable = 1 << 3,
+    NSWindowStyleRegular = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable,
+    NSWindowStyleMaskFullSizeContentView = 1 << 15
+};
 
 Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     int scale;
@@ -242,15 +279,23 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     tigrInitOSX();
 
+    NSUInteger windowStyleMask = NSWindowStyleRegular;
+
     if (flags & TIGR_AUTO) {
-        // Always use a 1:1 pixel size.
+        // Always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
         scale = 1;
     } else {
         // See how big we can make it and still fit on-screen.
         CGRect mainMonitor = CGDisplayBounds(CGMainDisplayID());
-        int maxW = CGRectGetHeight(mainMonitor) * 3 / 4;
-        int maxH = CGRectGetWidth(mainMonitor) * 3 / 4;
-        scale = tigrCalcScale(w, h, maxW, maxH);
+        int maxW = CGRectGetWidth(mainMonitor);
+        int maxH = CGRectGetHeight(mainMonitor);
+        NSRect screen = {{0, 0}, {maxW, maxH}};
+        NSRect content = 
+            ((NSRect(*)(id, SEL, NSRect, NSUInteger))abi_objc_msgSend_stret)(
+                (id)objc_getClass("NSWindow"), sel_registerName("contentRectForFrameRect:styleMask:"),
+                screen, windowStyleMask
+            );
+        scale = tigrCalcScale(w, h, content.size.width, content.size.height);
     }
 
     scale = tigrEnforceScale(scale, flags);
@@ -258,7 +303,11 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     NSRect rect = { { 0, 0 }, { w * scale, h * scale } };
     id windowAlloc = objc_msgSend_id((id)objc_getClass("NSWindow"), sel_registerName("alloc"));
     id window = ((id(*)(id, SEL, NSRect, NSUInteger, NSUInteger, BOOL))objc_msgSend)(
-        windowAlloc, sel_registerName("initWithContentRect:styleMask:backing:defer:"), rect, 15, 2, NO);
+        windowAlloc, sel_registerName("initWithContentRect:styleMask:backing:defer:"), rect, windowStyleMask, 2, NO);
+
+    if (flags & TIGR_FULLSCREEN) {
+        objc_msgSend_void_id(window, sel_registerName("toggleFullScreen:"), window);
+    }
 
     objc_msgSend_void_bool(window, sel_registerName("setReleasedWhenClosed:"), NO);
 
@@ -276,6 +325,13 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     resultAddMethod =
         class_addMethod(WindowDelegateClass, sel_registerName("windowDidBecomeKey:"), (IMP)windowDidBecomeKey, "v@:@");
     assert(resultAddMethod);
+    resultAddMethod =
+        class_addMethod(WindowDelegateClass, sel_registerName("mouseEntered:"), (IMP)mouseEntered, "v@:@");
+    assert(resultAddMethod);
+    resultAddMethod =
+        class_addMethod(WindowDelegateClass, sel_registerName("mouseExited:"), (IMP)mouseExited, "v@:@");
+    assert(resultAddMethod);
+
     id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel_registerName("alloc"));
     id wdg = objc_msgSend_id(wdgAlloc, sel_registerName("init"));
 
@@ -324,11 +380,26 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     // Wrap a bitmap around it.
     NSSize windowSize = _tigrCocoaWindowSize(window);
-    bmp = tigrBitmap2(windowSize.width / scale, windowSize.height / scale, sizeof(TigrInternal));
+    bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
     bmp->handle = window;
 
     // Set the handle
     object_setInstanceVariable(wdg, "tigrHandle", (void*)bmp);
+
+    {
+        #define NSTrackingMouseEnteredAndExited 1
+        #define NSTrackingActiveInKeyWindow 0x20
+        #define NSTrackingInVisibleRect 0x200
+
+        int trackingFlags = NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
+        id trackingArea = objc_msgSend_id((id)objc_getClass("NSTrackingArea"), sel_registerName("alloc"));
+        trackingArea = ((id (*)(id, SEL, NSRect, int, id, id))objc_msgSend)
+            (
+                trackingArea, sel_registerName("initWithRect:options:owner:userInfo:"),
+                rect, trackingFlags, wdg, 0
+            );
+        objc_msgSend_void_id(contentView, sel_registerName("addTrackingArea:"), trackingArea);
+    }
 
     // Set up the Windows parts.
     win = tigrInternal(bmp);
@@ -337,9 +408,8 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win->scale = scale;
     win->lastChar = 0;
     win->flags = flags;
-    win->hblur = win->vblur = 0;
-    win->scanlines = 0.0f;
-    win->contrast = 1.0f;
+	win->p1 = win->p2 = win->p3 = 0;
+	win->p4 = 1;
     win->widgetsWanted = 0;
     win->widgetAlpha = 0;
     win->widgetsScale = 0;
@@ -347,6 +417,7 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win->gl.gl_legacy = 0;
     win->gl.glContext = openGLContext;
     win->mouseButtons = 0;
+    win->mouseInView = 0;
 
     tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
 
@@ -366,7 +437,7 @@ void tigrFree(Tigr* bmp) {
         if (!_tigrCocoaIsWindowClosed(window) && !terminated)
             objc_msgSend_void(window, sel_registerName("close"));
 
-        id wdg = objc_msgSend(window, sel_registerName("delegate"));
+        id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
         objc_msgSend_void(wdg, sel_registerName("release"));
         objc_msgSend_void((id)win->gl.glContext, sel_registerName("release"));
         objc_msgSend_void(window, sel_registerName("release"));
@@ -716,13 +787,17 @@ void _tigrOnCocoaEvent(id event, id window) {
     NSUInteger eventType = ((NSUInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("type"));
     switch (eventType) {
         case 1:  // NSLeftMouseDown
-            win->mouseButtons |= 1;
+            if (win->mouseInView) {
+                win->mouseButtons |= 1;
+            }
             break;
         case 2:  // NSLeftMouseUp
             win->mouseButtons &= ~1;
             break;
         case 3:  // NSRightMouseDown
-            win->mouseButtons |= 2;
+            if (win->mouseInView) {
+                win->mouseButtons |= 2;
+            }
             break;
         case 4:  // NSRightMouseUp
             win->mouseButtons &= ~2;
@@ -731,8 +806,9 @@ void _tigrOnCocoaEvent(id event, id window) {
         {
             // number == 2 is a middle button
             NSInteger number = ((NSInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("buttonNumber"));
-            if (number == 2)
+            if (number == 2 && win->mouseInView) {
                 win->mouseButtons |= 4;
+            }
             break;
         }
         case 26:  // NSOtherMouseUp
@@ -742,26 +818,6 @@ void _tigrOnCocoaEvent(id event, id window) {
                 win->mouseButtons &= ~4;
             break;
         }
-        // case 22: // NSScrollWheel
-        //{
-        //	CGFloat deltaX = ((CGFloat (*)(id,
-        // SEL))abi_objc_msgSend_fpret)(event,
-        // sel_registerName("scrollingDeltaX")); 	CGFloat deltaY = ((CGFloat
-        //(*)(id, SEL))abi_objc_msgSend_fpret)(event,
-        // sel_registerName("scrollingDeltaY")); 	BOOL precisionScrolling = ((BOOL
-        //(*)(id, SEL))objc_msgSend)(event,
-        // sel_registerName("hasPreciseScrollingDeltas"));
-        //
-        //	if(precisionScrolling)
-        //	{
-        //		deltaX *= 0.1f; // similar to glfw
-        //		deltaY *= 0.1f;
-        //	}
-        //
-        //	if(fabs(deltaX) > 0.0f || fabs(deltaY) > 0.0f)
-        //		printf("mouse scroll wheel delta %f %f\n", deltaX,
-        // deltaY); 	break;
-        //}
         case 12:  // NSFlagsChanged
         {
             NSUInteger modifiers = ((NSUInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("modifierFlags"));
@@ -805,6 +861,11 @@ void _tigrOnCocoaEvent(id event, id window) {
 
             uint16_t keyCode = ((unsigned short (*)(id, SEL))objc_msgSend)(event, sel_registerName("keyCode"));
             win->keys[_tigrKeyFromOSX(keyCode)] = 1;
+
+            // Pass through cmd+key
+            if (win->keys[TK_LWIN]) {
+                break;
+            }
             return;
         }
         case 11:  // NSKeyUp
@@ -836,12 +897,12 @@ void tigrUpdate(Tigr* bmp) {
     }
 
     id keyWindow = objc_msgSend_id(NSApp, sel_registerName("keyWindow"));
-    unsigned long long eventMask = NSUIntegerMax;
+    unsigned long long eventMask = NSAllEventMask;
 
     if (keyWindow == window) {
         memcpy(win->prev, win->keys, 256);
     } else {
-        eventMask = ~(NSKeyDownMask | NSKeyUpMask);
+        eventMask &= ~(NSKeyDownMask | NSKeyUpMask);
     }
 
     id distantPast = objc_msgSend_id((id)objc_getClass("NSDate"), sel_registerName("distantPast"));
@@ -914,7 +975,7 @@ void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
         p.y = adjustFrame.size.height;
 
     // map input to pixels
-    NSRect r = { p.x, p.y, 0, 0 };
+    NSRect r = { p, {0, 0} };
     r = ((NSRect(*)(id, SEL, NSRect))abi_objc_msgSend_stret)(windowContentView,
                                                              sel_registerName("convertRectToBacking:"), r);
     p = r.origin;
