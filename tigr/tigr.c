@@ -3,6 +3,158 @@
 
 #include "tigr.h"
 
+//////// Start of inlined file: tigr_internal.h ////////
+
+// can't use pragma once here because this file probably will endup in .c
+#ifndef __TIGR_INTERNAL_H__
+#define __TIGR_INTERNAL_H__
+
+#define _CRT_SECURE_NO_WARNINGS NOPE
+
+// Graphics configuration.
+#define TIGR_GAPI_GL
+
+// Creates a new bitmap, with extra payload bytes.
+Tigr *tigrBitmap2(int w, int h, int extra);
+
+// Resizes an existing bitmap.
+void tigrResize(Tigr *bmp, int w, int h);
+
+// Calculates the biggest scale that a bitmap can fit into an area at.
+int tigrCalcScale(int bmpW, int bmpH, int areaW, int areaH);
+
+// Calculates a new scale, taking minimum-scale flags into account.
+int tigrEnforceScale(int scale, int flags);
+
+// Calculates the correct position for a bitmap to fit into a window.
+void tigrPosition(Tigr *bmp, int scale, int windowW, int windowH, int out[4]);
+
+// ----------------------------------------------------------
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
+#if __linux__ && !__ANDROID__
+#include<X11/X.h>
+#include<X11/Xlib.h>
+#endif
+
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#if TARGET_OS_IPHONE
+#define __IOS__ 1
+#else
+#define __MACOS__ 1
+#endif
+#endif
+
+#ifdef TIGR_GAPI_GL
+#if __MACOS__
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl3.h>
+#endif
+#ifdef _WIN32
+#include <GL/gl.h>
+#endif
+#if __linux__ && !__ANDROID__
+#define GL_GLEXT_PROTOTYPES
+#include <GL/gl.h>
+#include<GL/glx.h>
+#endif
+#if __ANDROID__
+#include <EGL/egl.h>
+#include <GLES3/gl3.h>
+#endif
+#if __IOS__
+#define GLES_SILENCE_DEPRECATION
+#include <OpenGLES/ES3/gl.h>
+#endif
+
+typedef struct {
+	#ifdef _WIN32
+	HGLRC hglrc;
+	HDC dc;
+	#endif
+	#ifdef __APPLE__
+	void *glContext;
+	#endif
+	GLuint tex[2];
+	GLuint vao;
+	GLuint program;
+	GLuint uniform_projection;
+	GLuint uniform_model;
+	GLuint uniform_parameters;
+	int gl_legacy;
+	int gl_user_opengl_rendering;
+} GLStuff;
+#endif
+
+#define MAX_TOUCH_POINTS 10
+
+typedef struct {
+	int shown, closed;
+	#ifdef TIGR_GAPI_GL
+	GLStuff gl;
+	#endif
+
+	#ifdef _WIN32
+	wchar_t *wtitle;
+	DWORD dwStyle;
+	RECT oldPos;
+	#endif
+	#ifdef __linux__
+	#if __ANDROID__
+    EGLContext context;
+	#else
+	Display *dpy;
+	Window win;
+	GLXContext glc;
+	XIC ic;
+	#endif // __ANDROID__
+	#endif // __linux__
+	
+	Tigr *widgets;
+	int widgetsWanted;
+	unsigned char widgetAlpha;
+	float widgetsScale;
+
+	float p1, p2, p3, p4;
+
+	int flags;
+	int scale;
+	int pos[4];
+	int lastChar;
+	char keys[256], prev[256];
+	#if defined(__MACOS__)
+	int mouseInView;
+	int mouseButtons;
+	#endif
+	#if defined(__linux__) || defined(__IOS__)
+	int mouseButtons;
+	int mouseX;
+	int mouseY;
+	#endif // __linux__ __IOS__
+	#if defined(__ANDROID__) || defined(__IOS__)
+	int numTouchPoints;
+	TigrTouchPoint touchPoints[MAX_TOUCH_POINTS];
+	#endif // __ANDROID__ __IOS__
+} TigrInternal;
+// ----------------------------------------------------------
+
+TigrInternal *tigrInternal(Tigr *bmp);
+
+void tigrGAPICreate(Tigr *bmp);
+void tigrGAPIDestroy(Tigr *bmp);
+int  tigrGAPIBegin(Tigr *bmp);
+int  tigrGAPIEnd(Tigr *bmp);
+void tigrGAPIPresent(Tigr *bmp, int w, int h);
+
+#endif
+
+
+//////// End of inlined file: tigr_internal.h ////////
+
 //////// Start of inlined file: tigr_upscale_gl_vs.h ////////
 
 #ifndef __TIGR_UPSCALE_GL_VS_H__
@@ -13,7 +165,7 @@
 #ifndef __TIGR_GLSL_HDR_H__
 #define __TIGR_GLSL_HDR_H__
 
-#if __ANDROID__
+#if __ANDROID__ || __IOS__
 #define GLSL_VERSION_HEADER \
     "#version 300 es\n" \
     "precision mediump float;\n"
@@ -90,144 +242,7 @@ const int tigr_default_fx_gl_fs_size = (int)sizeof(tigr_default_fx_gl_fs) - 1;
 
 //////// Start of inlined file: tigr_bitmaps.c ////////
 
-//////// Start of inlined file: tigr_internal.h ////////
-
-// can't use pragma once here because this file probably will endup in .c
-#ifndef __TIGR_INTERNAL_H__
-#define __TIGR_INTERNAL_H__
-
-#define _CRT_SECURE_NO_WARNINGS NOPE
-
-// Graphics configuration.
-#define TIGR_GAPI_GL
-
-// Creates a new bitmap, with extra payload bytes.
-Tigr *tigrBitmap2(int w, int h, int extra);
-
-// Resizes an existing bitmap.
-void tigrResize(Tigr *bmp, int w, int h);
-
-// Calculates the biggest scale that a bitmap can fit into an area at.
-int tigrCalcScale(int bmpW, int bmpH, int areaW, int areaH);
-
-// Calculates a new scale, taking minimum-scale flags into account.
-int tigrEnforceScale(int scale, int flags);
-
-// Calculates the correct position for a bitmap to fit into a window.
-void tigrPosition(Tigr *bmp, int scale, int windowW, int windowH, int out[4]);
-
-// ----------------------------------------------------------
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-
-#if __linux__ && !__ANDROID__
-#include<X11/X.h>
-#include<X11/Xlib.h>
-#endif
-
-#ifdef TIGR_GAPI_GL
-#ifdef __APPLE__
-#define GL_SILENCE_DEPRECATION
-#include <OpenGL/gl3.h>
-#endif
-#ifdef _WIN32
-#include <GL/gl.h>
-#endif
-#if __linux__ && !__ANDROID__
-#define GL_GLEXT_PROTOTYPES
-#include <GL/gl.h>
-#include<GL/glx.h>
-#endif
-#if __ANDROID__
-#include <EGL/egl.h>
-#include <GLES3/gl3.h>
-#endif
-typedef struct {
-	#ifdef _WIN32
-	HGLRC hglrc;
-	HDC dc;
-	#endif
-	#ifdef __APPLE__
-	void *glContext;
-	#endif
-	GLuint tex[2];
-	GLuint vao;
-	GLuint program;
-	GLuint uniform_projection;
-	GLuint uniform_model;
-	GLuint uniform_parameters;
-	int gl_legacy;
-	int gl_user_opengl_rendering;
-} GLStuff;
-#endif
-
-#define MAX_TOUCH_POINTS 10
-
-typedef struct {
-	int shown, closed;
-	#ifdef TIGR_GAPI_GL
-	GLStuff gl;
-	#endif
-
-	#ifdef _WIN32
-	wchar_t *wtitle;
-	DWORD dwStyle;
-	RECT oldPos;
-	#endif
-	#ifdef __linux__
-	#if __ANDROID__
-    EGLContext context;
-	#else
-	Display *dpy;
-	Window win;
-	GLXContext glc;
-	XIC ic;
-	#endif // __ANDROID__
-	#endif // __linux__
-	
-	Tigr *widgets;
-	int widgetsWanted;
-	unsigned char widgetAlpha;
-	float widgetsScale;
-
-	float p1, p2, p3, p4;
-
-	int flags;
-	int scale;
-	int pos[4];
-	int lastChar;
-	char keys[256], prev[256];
-	#if defined(__APPLE__)
-	int mouseInView;
-	int mouseButtons;
-	#endif
-	#ifdef __linux__
-	int mouseButtons;
-	int mouseX;
-	int mouseY;
-	#endif // __linux__
-	#ifdef __ANDROID__
-	int numTouchPoints;
-	TigrTouchPoint touchPoints[MAX_TOUCH_POINTS];
-	#endif // __ANDROID__
-} TigrInternal;
-// ----------------------------------------------------------
-
-TigrInternal *tigrInternal(Tigr *bmp);
-
-void tigrGAPICreate(Tigr *bmp);
-void tigrGAPIDestroy(Tigr *bmp);
-int  tigrGAPIBegin(Tigr *bmp);
-int  tigrGAPIEnd(Tigr *bmp);
-void tigrGAPIPresent(Tigr *bmp, int w, int h);
-
-#endif
-
-
-//////// End of inlined file: tigr_internal.h ////////
-
+//#include "tigr_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -1644,6 +1659,7 @@ TigrInternal *tigrInternal(Tigr *bmp)
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #define WIDGET_SCALE	3
 #define WIDGET_FADE		16
@@ -2349,10 +2365,66 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 // this one is based on https://github.com/jimon/osx_app_in_plain_c
 
 //#include "tigr_internal.h"
+//////// Start of inlined file: tigr_objc.h ////////
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#ifdef TARGET_OS_MAC
+#ifndef TIGR_OBJC_H
+#define TIGR_OBJC_H
+
+#if defined(__IOS__) || defined (__MACOS__)
+
+#if defined(__OBJC__) && __has_feature(objc_arc)
+#error "Can't compile as objective-c code!"
+#endif
+
+// ABI is a bit different between platforms
+#ifdef __arm64__
+#define abi_objc_msgSend_stret objc_msgSend
+#else
+#define abi_objc_msgSend_stret objc_msgSend_stret
+#endif
+#ifdef __i386__
+#define abi_objc_msgSend_fpret objc_msgSend_fpret
+#else
+#define abi_objc_msgSend_fpret objc_msgSend
+#endif
+
+#define objc_msgSendSuper_t(RET, ...) ((RET(*)(struct objc_super*, SEL, ##__VA_ARGS__))objc_msgSendSuper)
+#define objc_msgSend_t(RET, ...) ((RET(*)(id, SEL, ##__VA_ARGS__))objc_msgSend)
+#define objc_msgSend_stret_t(RET, ...) ((RET(*)(id, SEL, ##__VA_ARGS__))abi_objc_msgSend_stret)
+#define objc_msgSend_id objc_msgSend_t(id)
+#define objc_msgSend_void objc_msgSend_t(void)
+#define objc_msgSend_void_id objc_msgSend_t(void, id)
+#define objc_msgSend_void_bool objc_msgSend_t(void, bool)
+
+#define sel(NAME) sel_registerName(NAME)
+#define class(NAME) ((id)objc_getClass(NAME))
+#define makeClass(NAME, SUPER) \
+    objc_allocateClassPair((Class)objc_getClass(SUPER), NAME, 0)
+
+// Check here to get the signature right: https://nshipster.com/type-encodings/
+#define addMethod(CLASS, NAME, IMPL, SIGNATURE) \
+    if (!class_addMethod(CLASS, sel(NAME), (IMP) (IMPL), (SIGNATURE))) assert(false)
+
+#define addIvar(CLASS, NAME, SIZE, SIGNATURE) \
+    if (!class_addIvar(CLASS, NAME, SIZE, rint(log2(SIZE)), SIGNATURE)) assert(false)
+
+#define objc_alloc(CLASS) objc_msgSend_id(class(CLASS), sel("alloc"))
+
+#if __LP64__ || NS_BUILD_32_LIKE_64
+#define NSIntegerEncoding "q"
+#define NSUIntegerEncoding "L"
+#else
+#define NSIntegerEncoding "i"
+#define NSUIntegerEncoding "I"
+#endif
+
+#endif // defined(__IOS__) || defined (__MACOS__)
+#endif // TIGR_OBJC_H
+
+//////// End of inlined file: tigr_objc.h ////////
+
+
+#if __MACOS__
 
 #include <assert.h>
 #include <limits.h>
@@ -2370,15 +2442,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #include <objc/message.h>
 #include <objc/objc.h>
 #include <objc/runtime.h>
-
-// maybe this is available somewhere in objc runtime?
-#if __LP64__ || (TARGET_OS_EMBEDDED && !TARGET_OS_IPHONE) || TARGET_OS_WIN32 || NS_BUILD_32_LIKE_64
-#define NSIntegerEncoding "q"
-#define NSUIntegerEncoding "L"
-#else
-#define NSIntegerEncoding "i"
-#define NSUIntegerEncoding "I"
-#endif
 
 #ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
@@ -2404,35 +2467,13 @@ extern id const NSDefaultRunLoopMode;
 #define NSApplicationActivationPolicyRegular 0
 #endif
 
-#if defined(__OBJC__) && __has_feature(objc_arc)
-#error "Can't compile as objective-c code!"
-#endif
-
-// ABI is a bit different between platforms
-#ifdef __arm64__
-#define abi_objc_msgSend_stret objc_msgSend
-#else
-#define abi_objc_msgSend_stret objc_msgSend_stret
-#endif
-#ifdef __i386__
-#define abi_objc_msgSend_fpret objc_msgSend_fpret
-#else
-#define abi_objc_msgSend_fpret objc_msgSend
-#endif
-
-#define objc_msgSend_id ((id(*)(id, SEL))objc_msgSend)
-#define objc_msgSend_void ((void (*)(id, SEL))objc_msgSend)
-#define objc_msgSend_void_id ((void (*)(id, SEL, id))objc_msgSend)
-#define objc_msgSend_void_bool ((void (*)(id, SEL, BOOL))objc_msgSend)
-#define objc_msgSend_id_const_char ((id(*)(id, SEL, const char*))objc_msgSend)
-
 bool terminated = false;
 
 TigrInternal* _tigrInternalCocoa(id window) {
     if (!window)
         return NULL;
 
-    id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
+    id wdg = objc_msgSend_id(window, sel("delegate"));
     if (!wdg)
         return NULL;
 
@@ -2467,25 +2508,25 @@ void windowDidBecomeKey(id self, SEL _sel, id notification) {
 }
 
 void mouseEntered(id self, SEL _sel, id event) {
-    id window = objc_msgSend_id(event, sel_registerName("window"));
+    id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
     win->mouseInView = 1;
     if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id((id)objc_getClass("NSCursor"), sel_registerName("hide"));
+        objc_msgSend_id(class("NSCursor"), sel("hide"));
     }
 }
 
 void mouseExited(id self, SEL _sel, id event) {
-    id window = objc_msgSend_id(event, sel_registerName("window"));
+    id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
     win->mouseInView = 0;
     if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id((id)objc_getClass("NSCursor"), sel_registerName("unhide"));
+        objc_msgSend_id(class("NSCursor"), sel("unhide"));
     }
 }
 
 bool _tigrCocoaIsWindowClosed(id window) {
-    id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
+    id wdg = objc_msgSend_id(window, sel("delegate"));
     if (!wdg)
         return false;
     NSUInteger value = 0;
@@ -2499,7 +2540,7 @@ static id autoreleasePool = NULL;
 #ifdef DEBUG
 static void _showPools(const char* context) {
     fprintf(stderr, "NSAutoreleasePool@%s:\n", context);
-    objc_msgSend((id)objc_getClass("NSAutoreleasePool"), sel_registerName("showPools"));
+    objc_msgSend(class("NSAutoreleasePool"), sel("showPools"));
 }
 #define showPools(x) _showPools((x))
 #else
@@ -2507,12 +2548,12 @@ static void _showPools(const char* context) {
 #endif
 
 static id pushPool() {
-    id pool = objc_msgSend_id((id)objc_getClass("NSAutoreleasePool"), sel_registerName("alloc"));
-    return objc_msgSend_id(pool, sel_registerName("init"));
+    id pool = objc_msgSend_id(class("NSAutoreleasePool"), sel("alloc"));
+    return objc_msgSend_id(pool, sel("init"));
 }
 
 static void popPool(id pool) {
-    objc_msgSend_void(pool, sel_registerName("drain"));
+    objc_msgSend_void(pool, sel("drain"));
 }
 
 void _tigrCleanupOSX() {
@@ -2530,54 +2571,46 @@ void tigrInitOSX() {
 
     showPools("init start");
 
-    objc_msgSend_id((id)objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
-    ((void (*)(id, SEL, NSInteger))objc_msgSend)(NSApp, sel_registerName("setActivationPolicy:"),
-                                                 NSApplicationActivationPolicyRegular);
+    objc_msgSend_id(class("NSApplication"), sel("sharedApplication"));
+    objc_msgSend_t(void, NSInteger)(NSApp, sel("setActivationPolicy:"), NSApplicationActivationPolicyRegular);
 
-    Class appDelegateClass = objc_allocateClassPair((Class)objc_getClass("NSObject"), "AppDelegate", 0);
-    bool resultAddProtoc = class_addProtocol(appDelegateClass, objc_getProtocol("NSApplicationDelegate"));
-    assert(resultAddProtoc);
-    bool resultAddMethod = class_addMethod(appDelegateClass, sel_registerName("applicationShouldTerminate:"),
-                                           (IMP)applicationShouldTerminate, NSUIntegerEncoding "@:@");
-    assert(resultAddMethod);
-    id dgAlloc = objc_msgSend_id((id)appDelegateClass, sel_registerName("alloc"));
-    id dg = objc_msgSend_id(dgAlloc, sel_registerName("init"));
+    Class appDelegateClass = makeClass("AppDelegate", "NSObject");
+    addMethod(appDelegateClass, "applicationShouldTerminate", applicationShouldTerminate, NSUIntegerEncoding "@:@");
+    id dgAlloc = objc_msgSend_id((id)appDelegateClass, sel("alloc"));
+    id dg = objc_msgSend_id(dgAlloc, sel("init"));
 
-    objc_msgSend_void_id(NSApp, sel_registerName("setDelegate:"), dg);
-    objc_msgSend_void(NSApp, sel_registerName("finishLaunching"));
+    objc_msgSend_void_id(NSApp, sel("setDelegate:"), dg);
+    objc_msgSend_void(NSApp, sel("finishLaunching"));
 
-    id menubarAlloc = objc_msgSend_id((id)objc_getClass("NSMenu"), sel_registerName("alloc"));
-    id menuBar = objc_msgSend_id(menubarAlloc, sel_registerName("init"));
+    id menuBar = objc_alloc("NSMenu");
+    menuBar = objc_msgSend_id(menuBar, sel("init"));
 
-    id appMenuItemAlloc = objc_msgSend_id((id)objc_getClass("NSMenuItem"), sel_registerName("alloc"));
-    id appMenuItem = objc_msgSend_id(appMenuItemAlloc, sel_registerName("init"));
+    id appMenuItem = objc_alloc("NSMenuItem");
+    appMenuItem = objc_msgSend_id(appMenuItem, sel("init"));
 
-    objc_msgSend_void_id(menuBar, sel_registerName("addItem:"), appMenuItem);
-    ((id(*)(id, SEL, id))objc_msgSend)(NSApp, sel_registerName("setMainMenu:"), menuBar);
+    objc_msgSend_void_id(menuBar, sel("addItem:"), appMenuItem);
+    objc_msgSend_t(id, id)(NSApp, sel("setMainMenu:"), menuBar);
 
-    id processInfo = objc_msgSend_id((id)objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
-    id appName = objc_msgSend_id(processInfo, sel_registerName("processName"));
+    id processInfo = objc_msgSend_id(class("NSProcessInfo"), sel("processInfo"));
+    id appName = objc_msgSend_id(processInfo, sel("processName"));
 
-    id appMenuAlloc = objc_msgSend_id((id)objc_getClass("NSMenu"), sel_registerName("alloc"));
-    id appMenu = ((id(*)(id, SEL, id))objc_msgSend)(
-        appMenuAlloc, sel_registerName("initWithTitle:"),
-        appName
-    );
+    id appMenu = objc_alloc("NSMenu");
+    appMenu = objc_msgSend_t(id, id)(appMenu, sel("initWithTitle:"), appName);
 
     id quitTitlePrefixString =
-        objc_msgSend_id_const_char((id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), "Quit ");
-    id quitTitle = ((id(*)(id, SEL, id))objc_msgSend)(quitTitlePrefixString,
-                                                      sel_registerName("stringByAppendingString:"), appName);
+        objc_msgSend_t(id, const char*)(class("NSString"), sel("stringWithUTF8String:"), "Quit ");
+    id quitTitle = objc_msgSend_t(id, id)(
+        quitTitlePrefixString, sel("stringByAppendingString:"), appName);
 
     id quitMenuItemKey =
-        objc_msgSend_id_const_char((id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), "q");
-    id quitMenuItemAlloc = objc_msgSend_id((id)objc_getClass("NSMenuItem"), sel_registerName("alloc"));
-    id quitMenuItem = ((id(*)(id, SEL, id, SEL, id))objc_msgSend)(
-        quitMenuItemAlloc, sel_registerName("initWithTitle:action:keyEquivalent:"), quitTitle,
-        sel_registerName("terminate:"), quitMenuItemKey);
+        objc_msgSend_t(id, const char*)(class("NSString"), sel("stringWithUTF8String:"), "q");
+    id quitMenuItem = objc_alloc("NSMenuItem");
+    quitMenuItem = objc_msgSend_t(id, id, SEL, id)(
+        quitMenuItem, sel("initWithTitle:action:keyEquivalent:"), quitTitle,
+        sel("terminate:"), quitMenuItemKey);
 
-    objc_msgSend_void_id(appMenu, sel_registerName("addItem:"), quitMenuItem);
-    objc_msgSend_void_id(appMenuItem, sel_registerName("setSubmenu:"), appMenu);
+    objc_msgSend_void_id(appMenu, sel("addItem:"), quitMenuItem);
+    objc_msgSend_void_id(appMenuItem, sel("setSubmenu:"), appMenu);
 
     tigrOSXInited = true;
 
@@ -2602,10 +2635,9 @@ void tigrError(Tigr* bmp, const char* message, ...) {
 }
 
 NSSize _tigrCocoaWindowSize(id window) {
-    id contentView = objc_msgSend_id(window, sel_registerName("contentView"));
-    NSRect rect = ((NSRect(*)(id, SEL))abi_objc_msgSend_stret)(contentView, sel_registerName("frame"));
-    rect = ((NSRect(*)(id, SEL, NSRect))abi_objc_msgSend_stret)(contentView, sel_registerName("convertRectToBacking:"),
-                                                                rect);
+    id contentView = objc_msgSend_id(window, sel("contentView"));
+    NSRect rect = objc_msgSend_stret_t(NSRect)(contentView, sel("frame"));
+    rect = objc_msgSend_stret_t(NSRect, NSRect)(contentView, sel("convertRectToBacking:"), rect);
 
     return rect.size;
 }
@@ -2638,64 +2670,50 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
         int maxW = CGRectGetWidth(mainMonitor);
         int maxH = CGRectGetHeight(mainMonitor);
         NSRect screen = {{0, 0}, {maxW, maxH}};
-        NSRect content = 
-            ((NSRect(*)(id, SEL, NSRect, NSUInteger))abi_objc_msgSend_stret)(
-                (id)objc_getClass("NSWindow"), sel_registerName("contentRectForFrameRect:styleMask:"),
-                screen, windowStyleMask
-            );
+        NSRect content = objc_msgSend_stret_t(NSRect, NSRect, NSUInteger)(
+            class("NSWindow"), sel("contentRectForFrameRect:styleMask:"),
+            screen, windowStyleMask
+        );
         scale = tigrCalcScale(w, h, content.size.width, content.size.height);
     }
 
     scale = tigrEnforceScale(scale, flags);
 
     NSRect rect = { { 0, 0 }, { w * scale, h * scale } };
-    id windowAlloc = objc_msgSend_id((id)objc_getClass("NSWindow"), sel_registerName("alloc"));
+    id windowAlloc = objc_msgSend_id(class("NSWindow"), sel("alloc"));
     id window = ((id(*)(id, SEL, NSRect, NSUInteger, NSUInteger, BOOL))objc_msgSend)(
-        windowAlloc, sel_registerName("initWithContentRect:styleMask:backing:defer:"), rect, windowStyleMask, 2, NO);
+        windowAlloc, sel("initWithContentRect:styleMask:backing:defer:"), rect, windowStyleMask, 2, NO);
 
     if (flags & TIGR_FULLSCREEN) {
-        objc_msgSend_void_id(window, sel_registerName("toggleFullScreen:"), window);
+        objc_msgSend_void_id(window, sel("toggleFullScreen:"), window);
     }
 
-    objc_msgSend_void_bool(window, sel_registerName("setReleasedWhenClosed:"), NO);
+    objc_msgSend_void_bool(window, sel("setReleasedWhenClosed:"), NO);
 
     Class WindowDelegateClass = objc_allocateClassPair((Class)objc_getClass("NSObject"), "WindowDelegate", 0);
-    bool resultAddProtoc = class_addProtocol(WindowDelegateClass, objc_getProtocol("NSWindowDelegate"));
-    assert(resultAddProtoc);
-    bool resultAddIvar = class_addIvar(WindowDelegateClass, "closed", sizeof(NSUInteger),
-                                       rint(log2(sizeof(NSUInteger))), NSUIntegerEncoding);
-    assert(resultAddIvar);
-    resultAddIvar = class_addIvar(WindowDelegateClass, "tigrHandle", sizeof(void*), rint(log2(sizeof(void*))), "ˆv");
-    assert(resultAddIvar);
-    bool resultAddMethod =
-        class_addMethod(WindowDelegateClass, sel_registerName("windowWillClose:"), (IMP)windowWillClose, "v@:@");
-    assert(resultAddMethod);
-    resultAddMethod =
-        class_addMethod(WindowDelegateClass, sel_registerName("windowDidBecomeKey:"), (IMP)windowDidBecomeKey, "v@:@");
-    assert(resultAddMethod);
-    resultAddMethod =
-        class_addMethod(WindowDelegateClass, sel_registerName("mouseEntered:"), (IMP)mouseEntered, "v@:@");
-    assert(resultAddMethod);
-    resultAddMethod =
-        class_addMethod(WindowDelegateClass, sel_registerName("mouseExited:"), (IMP)mouseExited, "v@:@");
-    assert(resultAddMethod);
+    addIvar(WindowDelegateClass, "closed", sizeof(NSUInteger), NSUIntegerEncoding);
+    addIvar(WindowDelegateClass, "tigrHandle", sizeof(void*), "ˆv");
+    addMethod(WindowDelegateClass, "windowWillClose:", windowWillClose, "v@:@");
+    addMethod(WindowDelegateClass, "windowDidBecomeKey:", windowDidBecomeKey, "v@:@");
+    addMethod(WindowDelegateClass, "mouseEntered:", mouseEntered, "v@:@");
+    addMethod(WindowDelegateClass, "mouseExited:", mouseExited, "v@:@");
 
-    id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel_registerName("alloc"));
-    id wdg = objc_msgSend_id(wdgAlloc, sel_registerName("init"));
+    id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel("alloc"));
+    id wdg = objc_msgSend_id(wdgAlloc, sel("init"));
 
-    objc_msgSend_void_id(window, sel_registerName("setDelegate:"), wdg);
+    objc_msgSend_void_id(window, sel("setDelegate:"), wdg);
 
-    id contentView = objc_msgSend_id(window, sel_registerName("contentView"));
+    id contentView = objc_msgSend_id(window, sel("contentView"));
 
     if (flags & TIGR_RETINA)
-        objc_msgSend_void_bool(contentView, sel_registerName("setWantsBestResolutionOpenGLSurface:"), YES);
+        objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), YES);
 
     NSPoint point = { 20, 20 };
-    ((void (*)(id, SEL, NSPoint))objc_msgSend)(window, sel_registerName("cascadeTopLeftFromPoint:"), point);
+    ((void (*)(id, SEL, NSPoint))objc_msgSend)(window, sel("cascadeTopLeftFromPoint:"), point);
 
     id titleString =
-        objc_msgSend_id_const_char((id)objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), title);
-    objc_msgSend_void_id(window, sel_registerName("setTitle:"), titleString);
+        objc_msgSend_t(id, const char*)(class("NSString"), sel("stringWithUTF8String:"), title);
+    objc_msgSend_void_id(window, sel("setTitle:"), titleString);
 
     uint32_t glAttributes[] = { 8, 24,  //	NSOpenGLPFAColorSize, 24,
                                 11, 8,  //	NSOpenGLPFAAlphaSize, 8,
@@ -2707,24 +2725,24 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
                                 99, 0x3200,  //	NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
                                 0 };
 
-    id pixelFormatAlloc = objc_msgSend_id((id)objc_getClass("NSOpenGLPixelFormat"), sel_registerName("alloc"));
-    id pixelFormat = ((id(*)(id, SEL, const uint32_t*))objc_msgSend)(
-        pixelFormatAlloc, sel_registerName("initWithAttributes:"), glAttributes);
-    objc_msgSend_void(pixelFormat, sel_registerName("autorelease"));
+    id pixelFormat = objc_alloc("NSOpenGLPixelFormat");
+    pixelFormat = objc_msgSend_t(id, const uint32_t*)
+        (pixelFormat, sel("initWithAttributes:"), glAttributes);
+    objc_msgSend_void(pixelFormat, sel("autorelease"));
 
-    id openGLContextAlloc = objc_msgSend_id((id)objc_getClass("NSOpenGLContext"), sel_registerName("alloc"));
-    id openGLContext = ((id(*)(id, SEL, id, id))objc_msgSend)(
-        openGLContextAlloc, sel_registerName("initWithFormat:shareContext:"), pixelFormat, nil);
+    id openGLContext = objc_alloc("NSOpenGLContext");
+    openGLContext = objc_msgSend_t(id, id, id)
+        (openGLContext, sel("initWithFormat:shareContext:"), pixelFormat, nil);
 
-    objc_msgSend_void_id(openGLContext, sel_registerName("setView:"), contentView);
-    objc_msgSend_void_id(window, sel_registerName("makeKeyAndOrderFront:"), window);
-    objc_msgSend_void_bool(window, sel_registerName("setAcceptsMouseMovedEvents:"), YES);
+    objc_msgSend_void_id(openGLContext, sel("setView:"), contentView);
+    objc_msgSend_void_id(window, sel("makeKeyAndOrderFront:"), window);
+    objc_msgSend_void_bool(window, sel("setAcceptsMouseMovedEvents:"), YES);
 
-    id blackColor = objc_msgSend_id((id)objc_getClass("NSColor"), sel_registerName("blackColor"));
-    objc_msgSend_void_id(window, sel_registerName("setBackgroundColor:"), blackColor);
+    id blackColor = objc_msgSend_id(class("NSColor"), sel("blackColor"));
+    objc_msgSend_void_id(window, sel("setBackgroundColor:"), blackColor);
 
     // TODO do we really need this?
-    objc_msgSend_void_bool(NSApp, sel_registerName("activateIgnoringOtherApps:"), YES);
+    objc_msgSend_void_bool(NSApp, sel("activateIgnoringOtherApps:"), YES);
 
     // Wrap a bitmap around it.
     NSSize windowSize = _tigrCocoaWindowSize(window);
@@ -2740,13 +2758,12 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
         #define NSTrackingInVisibleRect 0x200
 
         int trackingFlags = NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
-        id trackingArea = objc_msgSend_id((id)objc_getClass("NSTrackingArea"), sel_registerName("alloc"));
-        trackingArea = ((id (*)(id, SEL, NSRect, int, id, id))objc_msgSend)
-            (
-                trackingArea, sel_registerName("initWithRect:options:owner:userInfo:"),
-                rect, trackingFlags, wdg, 0
-            );
-        objc_msgSend_void_id(contentView, sel_registerName("addTrackingArea:"), trackingArea);
+        id trackingArea = objc_msgSend_id(class("NSTrackingArea"), sel("alloc"));
+        trackingArea = objc_msgSend_t(id, NSRect, int, id, id)(
+            trackingArea, sel("initWithRect:options:owner:userInfo:"),
+            rect, trackingFlags, wdg, 0
+        );
+        objc_msgSend_void_id(contentView, sel("addTrackingArea:"), trackingArea);
     }
 
     // Set up the Windows parts.
@@ -2769,7 +2786,7 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
 
-    objc_msgSend_void(openGLContext, sel_registerName("makeCurrentContext"));
+    objc_msgSend_void(openGLContext, sel("makeCurrentContext"));
     tigrGAPICreate(bmp);
 
     return bmp;
@@ -2782,13 +2799,14 @@ void tigrFree(Tigr* bmp) {
 
         id window = (id)bmp->handle;
 
-        if (!_tigrCocoaIsWindowClosed(window) && !terminated)
-            objc_msgSend_void(window, sel_registerName("close"));
+        if (!_tigrCocoaIsWindowClosed(window) && !terminated) {
+            objc_msgSend_void(window, sel("close"));
+        }
 
-        id wdg = objc_msgSend_id(window, sel_registerName("delegate"));
-        objc_msgSend_void(wdg, sel_registerName("release"));
-        objc_msgSend_void((id)win->gl.glContext, sel_registerName("release"));
-        objc_msgSend_void(window, sel_registerName("release"));
+        id wdg = objc_msgSend_id(window, sel("delegate"));
+        objc_msgSend_void(wdg, sel("release"));
+        objc_msgSend_void((id)win->gl.glContext, sel("release"));
+        objc_msgSend_void(window, sel("release"));
     }
     free(bmp->pix);
     free(bmp);
@@ -3128,11 +3146,11 @@ void _tigrOnCocoaEvent(id event, id window) {
     TigrInternal* win = _tigrInternalCocoa(window);
     if (!win)  // just pipe the event
     {
-        objc_msgSend_void_id(NSApp, sel_registerName("sendEvent:"), event);
+        objc_msgSend_void_id(NSApp, sel("sendEvent:"), event);
         return;
     }
 
-    NSUInteger eventType = ((NSUInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("type"));
+    NSUInteger eventType =  objc_msgSend_t(NSUInteger)(event, sel("type"));
     switch (eventType) {
         case 1:  // NSLeftMouseDown
             if (win->mouseInView) {
@@ -3153,7 +3171,7 @@ void _tigrOnCocoaEvent(id event, id window) {
         case 25:  // NSOtherMouseDown
         {
             // number == 2 is a middle button
-            NSInteger number = ((NSInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("buttonNumber"));
+            NSInteger number = objc_msgSend_t(NSInteger)(event, sel("buttonNumber"));
             if (number == 2 && win->mouseInView) {
                 win->mouseButtons |= 4;
             }
@@ -3161,14 +3179,14 @@ void _tigrOnCocoaEvent(id event, id window) {
         }
         case 26:  // NSOtherMouseUp
         {
-            NSInteger number = ((NSInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("buttonNumber"));
+            NSInteger number = objc_msgSend_t(NSInteger)(event, sel("buttonNumber"));
             if (number == 2)
                 win->mouseButtons &= ~4;
             break;
         }
         case 12:  // NSFlagsChanged
         {
-            NSUInteger modifiers = ((NSUInteger(*)(id, SEL))objc_msgSend)(event, sel_registerName("modifierFlags"));
+            NSUInteger modifiers = objc_msgSend_t(NSUInteger)(event, sel("modifierFlags"));
 
             // based on NSEventModifierFlags and
             // NSDeviceIndependentModifierFlagsMask
@@ -3201,13 +3219,12 @@ void _tigrOnCocoaEvent(id event, id window) {
         }
         case 10:  // NSKeyDown
         {
-            id inputText = objc_msgSend_id(event, sel_registerName("characters"));
-            const char* inputTextUTF8 =
-                ((const char* (*)(id, SEL))objc_msgSend)(inputText, sel_registerName("UTF8String"));
+            id inputText = objc_msgSend_id(event, sel("characters"));
+            const char* inputTextUTF8 = objc_msgSend_t(const char*)(inputText, sel("UTF8String"));
 
             tigrDecodeUTF8(inputTextUTF8, &win->lastChar);
 
-            uint16_t keyCode = ((unsigned short (*)(id, SEL))objc_msgSend)(event, sel_registerName("keyCode"));
+            uint16_t keyCode = objc_msgSend_t(unsigned short)(event, sel("keyCode"));
             win->keys[_tigrKeyFromOSX(keyCode)] = 1;
 
             // Pass through cmd+key
@@ -3218,7 +3235,7 @@ void _tigrOnCocoaEvent(id event, id window) {
         }
         case 11:  // NSKeyUp
         {
-            uint16_t keyCode = ((unsigned short (*)(id, SEL))objc_msgSend)(event, sel_registerName("keyCode"));
+            uint16_t keyCode = objc_msgSend_t(unsigned short)(event, sel("keyCode"));
             win->keys[_tigrKeyFromOSX(keyCode)] = 0;
             return;
         }
@@ -3226,7 +3243,7 @@ void _tigrOnCocoaEvent(id event, id window) {
             break;
     }
 
-    objc_msgSend_void_id(NSApp, sel_registerName("sendEvent:"), event);
+    objc_msgSend_void_id(NSApp, sel("sendEvent:"), event);
 }
 
 void tigrUpdate(Tigr* bmp) {
@@ -3244,7 +3261,7 @@ void tigrUpdate(Tigr* bmp) {
         return;
     }
 
-    id keyWindow = objc_msgSend_id(NSApp, sel_registerName("keyWindow"));
+    id keyWindow = objc_msgSend_id(NSApp, sel("keyWindow"));
     unsigned long long eventMask = NSAllEventMask;
 
     if (keyWindow == window) {
@@ -3253,12 +3270,13 @@ void tigrUpdate(Tigr* bmp) {
         eventMask &= ~(NSKeyDownMask | NSKeyUpMask);
     }
 
-    id distantPast = objc_msgSend_id((id)objc_getClass("NSDate"), sel_registerName("distantPast"));
+    id distantPast = objc_msgSend_id(class("NSDate"), sel("distantPast"));
     id event = 0;
     do {
-        event = ((id(*)(id, SEL, NSUInteger, id, id, BOOL))objc_msgSend)(
-            NSApp, sel_registerName("nextEventMatchingMask:untilDate:inMode:dequeue:"), eventMask, distantPast,
-            NSDefaultRunLoopMode, YES);
+        event = objc_msgSend_t(id, NSUInteger, id, id, BOOL)(
+            NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), eventMask, distantPast,
+            NSDefaultRunLoopMode, YES
+        );
 
         if (event != 0) {
             _tigrOnCocoaEvent(event, window);
@@ -3266,8 +3284,8 @@ void tigrUpdate(Tigr* bmp) {
     } while (event != 0);
 
     // do runloop stuff
-    objc_msgSend_void(NSApp, sel_registerName("updateWindows"));
-    objc_msgSend_void(openGLContext, sel_registerName("update"));
+    objc_msgSend_void(NSApp, sel("updateWindows"));
+    objc_msgSend_void(openGLContext, sel("update"));
     tigrGAPIBegin(bmp);
 
     NSSize windowSize = _tigrCocoaWindowSize(window);
@@ -3279,19 +3297,19 @@ void tigrUpdate(Tigr* bmp) {
 
     tigrPosition(bmp, win->scale, windowSize.width, windowSize.height, win->pos);
     tigrGAPIPresent(bmp, windowSize.width, windowSize.height);
-    objc_msgSend_void(openGLContext, sel_registerName("flushBuffer"));
+    objc_msgSend_void(openGLContext, sel("flushBuffer"));
     tigrGAPIEnd(bmp);
 }
 
 int tigrGAPIBegin(Tigr* bmp) {
     TigrInternal* win = tigrInternal(bmp);
-    objc_msgSend_void((id)win->gl.glContext, sel_registerName("makeCurrentContext"));
+    objc_msgSend_void((id)win->gl.glContext, sel("makeCurrentContext"));
     return 0;
 }
 
 int tigrGAPIEnd(Tigr* bmp) {
     (void)bmp;
-    objc_msgSend_void((id)objc_getClass("NSOpenGLContext"), sel_registerName("clearCurrentContext"));
+    objc_msgSend_void(class("NSOpenGLContext"), sel("clearCurrentContext"));
     return 0;
 }
 
@@ -3305,12 +3323,12 @@ void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
     win = tigrInternal(bmp);
     window = (id)bmp->handle;
 
-    id windowContentView = objc_msgSend_id(window, sel_registerName("contentView"));
-    NSRect adjustFrame = ((NSRect(*)(id, SEL))abi_objc_msgSend_stret)(windowContentView, sel_registerName("frame"));
+    id windowContentView = objc_msgSend_id(window, sel("contentView"));
+    NSRect adjustFrame =  objc_msgSend_stret_t(NSRect)(windowContentView, sel("frame"));
 
     // NSPoint is small enough to fit a register, so no need for
     // objc_msgSend_stret
-    NSPoint p = ((NSPoint(*)(id, SEL))objc_msgSend)(window, sel_registerName("mouseLocationOutsideOfEventStream"));
+    NSPoint p = objc_msgSend_t(NSPoint)(window, sel("mouseLocationOutsideOfEventStream"));
 
     // map input to content view rect
     if (p.x < 0)
@@ -3324,8 +3342,7 @@ void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
 
     // map input to pixels
     NSRect r = { p, {0, 0} };
-    r = ((NSRect(*)(id, SEL, NSRect))abi_objc_msgSend_stret)(windowContentView,
-                                                             sel_registerName("convertRectToBacking:"), r);
+    r = objc_msgSend_stret_t(NSRect, NSRect)(windowContentView, sel("convertRectToBacking:"), r);
     p = r.origin;
 
     p.x = (p.x - win->pos[0]) / win->scale;
@@ -3337,7 +3354,7 @@ void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
         *y = p.y;
 
     if (buttons) {
-        id keyWindow = objc_msgSend_id(NSApp, sel_registerName("keyWindow"));
+        id keyWindow = objc_msgSend_id(NSApp, sel("keyWindow"));
         *buttons = keyWindow != bmp->handle ? 0 : win->mouseButtons;
     }
 }
@@ -3388,9 +3405,416 @@ float tigrTime() {
 }
 
 #endif
-#endif
 
 //////// End of inlined file: tigr_osx.c ////////
+
+//////// Start of inlined file: tigr_ios.c ////////
+
+//#include "tigr_internal.h"
+//#include "tigr_objc.h"
+
+#ifdef __IOS__
+
+#include <CoreGraphics/CoreGraphics.h>
+#include <objc/message.h>
+#include <objc/objc.h>
+#include <objc/runtime.h>
+#include <dispatch/dispatch.h>
+#include <os/log.h>
+#include <time.h>
+
+id makeNSString(const char* str) {
+    return objc_msgSend_t(id, const char*)
+        (class("NSString"), sel("stringWithUTF8String:"), str);
+}
+
+id joinNSStrings(id a, id b) {
+    return objc_msgSend_t(id, id)
+        (a, sel("stringByAppendingString:"), b);
+}
+
+const char* UTF8StringFromNSString(id a) {
+    return objc_msgSend_t(const char*)(a, sel("UTF8String"));
+}
+
+extern id UIApplication;
+static int NSQualityOfServiceUserInteractive = 0x21;
+
+typedef struct {
+    TigrTouchPoint points[MAX_TOUCH_POINTS];
+    int numPoints;
+} InputState;
+
+
+/// Global state
+static struct {
+    InputState inputState;
+    id viewController;
+    id context;
+    id frameCondition;
+    int screenW;
+    int screenH;
+    double scaleFactor;
+    double timeSinceLastDraw;
+    int closed;
+    int renderReadFd;
+    int mainWriteFd;
+} gState = {
+    .inputState = {
+        .numPoints = 0,
+    },
+    .viewController = 0,
+    .context = 0,
+    .frameCondition = 0,
+    .screenW = 0,
+    .screenH = 0,
+    .scaleFactor = 1,
+    .timeSinceLastDraw = 0,
+    .closed = 0,
+    .renderReadFd = 0,
+    .mainWriteFd = 0,
+};
+
+typedef enum {
+    SET_INPUT
+} TigrMessage;
+
+typedef struct TigrMessageData {
+    TigrMessage message;
+    InputState inputState;
+} TigrMessageData;
+
+static id autoreleasePool = NULL;
+
+void writeToRenderThread(const TigrMessageData* message) {
+    if (write(gState.mainWriteFd, message, sizeof(TigrMessageData)) != sizeof(TigrMessageData)) {
+        os_log_error(OS_LOG_DEFAULT, "Failed to write message to render thread: %{public}s", strerror(errno));
+    }
+}
+
+int readFromMainThread(TigrMessageData* message) {
+    int result = read(gState.renderReadFd, message, sizeof(TigrMessageData));
+    if (result == -1 && errno == EAGAIN) {
+        return 0;
+    }
+    if (result != sizeof(TigrMessageData)) {
+        os_log_error(OS_LOG_DEFAULT, "Failed to read message from main thread: %{public}s", strerror(errno));
+        return 0;
+    }
+    return 1;
+}
+
+void viewWillTransitionToSize(id self, SEL _sel, CGSize size, id transitionCoordinator) {
+    // No animation, just set them
+    gState.screenW = size.width * gState.scaleFactor;
+    gState.screenH = size.height * gState.scaleFactor;
+    struct objc_super super = {
+        self,
+        objc_getClass("GLKViewController"),
+    };
+    objc_msgSendSuper_t(void, CGSize, id)(&super, _sel, size, transitionCoordinator);
+}
+
+BOOL prefersStatusBarHidden(id self, SEL _sel) {
+    return true;
+}
+
+enum RenderState {
+    SWAPPED = 5150,
+    RENDERED
+};
+
+BOOL didFinishLaunchingWithOptions(id self, SEL _sel, id application, id options) {
+    id screen = objc_msgSend_id(class("UIScreen"), sel("mainScreen"));
+    CGRect bounds = objc_msgSend_t(CGRect)(screen, sel("bounds"));
+    CGSize size = bounds.size;
+
+    id window = objc_alloc("UIWindow");
+    window = objc_msgSend_t(id, CGRect)(window, sel("initWithFrame:"), bounds);
+
+    Class ViewController = makeClass("TigrViewController", "GLKViewController");
+    addMethod(ViewController, "viewWillTransitionToSize:withTransitionCoordinator:", viewWillTransitionToSize, "v@:{CGSize}@");
+    addMethod(ViewController, "prefersStatusBarHidden", prefersStatusBarHidden, "c@:");
+    id vc = objc_msgSend_t(id)((id)ViewController, sel("alloc"));
+    vc = objc_msgSend_id(vc, sel("init"));
+    gState.viewController = vc;
+    objc_msgSend_t(void, int)(vc, sel("setPreferredFramesPerSecond:"), 60);
+    int framesPerSecond = objc_msgSend_t(int)(vc, sel("framesPerSecond"));
+
+    id context = objc_alloc("EAGLContext");
+    static int kEAGLRenderingAPIOpenGLES3 = 3;
+    context = objc_msgSend_t(id, int)(context, sel("initWithAPI:"), kEAGLRenderingAPIOpenGLES3);
+    gState.context = context;
+
+    id view = objc_alloc("GLKView");
+    view = objc_msgSend_t(id, CGRect, id)(view, sel("initWithFrame:context:"), bounds, context);
+    objc_msgSend_t(void, BOOL)(view, sel("setMultipleTouchEnabled:"), YES);
+    objc_msgSend_t(void, id)(view, sel("setDelegate:"), self);
+    objc_msgSend_t(void, id)(vc, sel("setView:"), view);
+    objc_msgSend_t(void, id)(vc, sel("setDelegate:"), self);
+    objc_msgSend_t(void, id)(window, sel("setRootViewController:"), vc);
+    objc_msgSend_t(void)(window, sel("makeKeyAndVisible"));
+
+    gState.scaleFactor = objc_msgSend_t(double)(view, sel("contentScaleFactor"));
+    gState.screenW = size.width * gState.scaleFactor;
+    gState.screenH = size.height * gState.scaleFactor;
+
+    gState.frameCondition = objc_msgSend_t(id, int)(objc_alloc("NSConditionLock"), sel("initWithCondition:"), RENDERED);
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), RENDERED);
+
+    id renderThread = objc_msgSend_t(id, id, SEL, id)
+        (objc_alloc("NSThread"), sel("initWithTarget:selector:object:"), self, sel("renderMain"), NULL);
+    objc_msgSend_t(void, int)(renderThread, sel("setQualityOfService:"), NSQualityOfServiceUserInteractive);
+    objc_msgSend_t(void, id)(renderThread, sel("setName:"), makeNSString("Tigr Render Thread"));
+    objc_msgSend_void(renderThread, sel("start"));
+
+    return YES;
+}
+
+void waitForFrame() {
+    objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), 0);
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("unlockWithCondition:"), RENDERED);
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), SWAPPED);
+    objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
+}
+
+void drawInRect(id _self, SEL _sel, id view, CGRect rect) {
+    gState.timeSinceLastDraw = objc_msgSend_t(double)(gState.viewController, sel("timeSinceLastDraw"));
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("unlockWithCondition:"), SWAPPED);
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), RENDERED);
+    objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
+}
+
+extern void tigrMain();
+
+void renderMain(id _self, SEL _sel) {
+    objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), SWAPPED);
+    objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
+    tigrMain();
+}
+
+enum {
+    UITouchPhaseBegan,
+    UITouchPhaseMoved,
+    UITouchPhaseStationary,
+    UITouchPhaseEnded,
+    UITouchPhaseCancelled,
+};
+
+void touches(id self, SEL sel, id touches, id event) {
+    id allTouches = objc_msgSend_t(id)(event, sel("allTouches"));
+    id enumerator = objc_msgSend_t(id)(allTouches, sel("objectEnumerator"));
+    id touch = 0;
+    InputState input = {
+        .numPoints = 0,
+    };
+    while ((touch = objc_msgSend_t(id)(enumerator, sel("nextObject")))) {
+        CGPoint location = objc_msgSend_t(CGPoint, id)(touch, sel("locationInView:"), NULL);
+        int phase = objc_msgSend_t(int)(touch, sel("phase"));
+        switch (phase) {
+            case UITouchPhaseBegan:
+            case UITouchPhaseMoved:
+            case UITouchPhaseStationary:
+            input.points[input.numPoints].x = location.x * gState.scaleFactor;
+            input.points[input.numPoints].y = location.y * gState.scaleFactor;
+            input.numPoints++;
+            break;
+        }
+        if (input.numPoints >= MAX_TOUCH_POINTS) {
+            break;
+        }
+    }
+    TigrMessageData message = {
+        .message = SET_INPUT,
+        .inputState = input,
+    };
+    writeToRenderThread(&message);
+}
+
+Class tigrAppDelegate() {
+    static Class delegateClass = 0;
+    if (delegateClass != 0) {
+        return delegateClass;
+    }
+
+    id application = objc_msgSend_id(class("UIApplication"), sel("sharedApplication"));
+    delegateClass = makeClass("TigrAppDelegate", "UIResponder");
+    addMethod(delegateClass, "application:didFinishLaunchingWithOptions:", didFinishLaunchingWithOptions, "c@:@@");
+    addMethod(delegateClass, "touchesBegan:withEvent:", touches, "v@:@@");
+    addMethod(delegateClass, "touchesMoved:withEvent:", touches, "v@:@@");
+    addMethod(delegateClass, "touchesEnded:withEvent:", touches, "v@:@@");
+    addMethod(delegateClass, "touchesCancelled:withEvent:", touches, "v@:@@");
+    addMethod(delegateClass, "glkView:drawInRect:", drawInRect, "v@:@{CGRect}");
+    addMethod(delegateClass, "renderMain", renderMain, "v@:");
+    objc_registerClassPair(delegateClass);
+
+    int fds[2];
+    if (pipe(fds) != 0) {
+        tigrError(0, "Failed to create message pipe");
+    }
+    int flags = fcntl(fds[0], F_GETFL, 0);
+    fcntl(fds[0], F_SETFL, flags | O_NONBLOCK);
+
+    gState.renderReadFd = fds[0];
+    gState.mainWriteFd = fds[1];
+    return delegateClass;
+}
+
+Tigr* tigrWindow(int w, int h, const char* title, int flags) {
+    int scale = 1;
+    if (flags & TIGR_AUTO) {
+        // Always use a 1:1 pixel size.
+        scale = 1;
+    } else {
+        // See how big we can make it and still fit on-screen.
+        scale = tigrCalcScale(w, h, gState.screenW, gState.screenH);
+    }
+
+    scale = tigrEnforceScale(scale, flags);
+    Tigr* bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
+    bmp->handle = (void*)4711;
+    TigrInternal* win = tigrInternal(bmp);
+    win->shown = 0;
+    win->closed = 0;
+    win->scale = scale;
+
+    win->lastChar = 0;
+    win->flags = flags;
+    win->p1 = win->p2 = win->p3 = 0;
+	win->p4 = 1;
+    win->widgetsWanted = 0;
+    win->widgetAlpha = 0;
+    win->widgetsScale = 0;
+    win->widgets = 0;
+    win->gl.gl_legacy = 0;
+
+    tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
+    tigrGAPICreate(bmp);
+
+    return bmp;
+}
+
+void processEvents(TigrInternal* win) {
+    TigrMessageData data;
+
+    while (readFromMainThread(&data)) {
+        switch(data.message) {
+            case SET_INPUT:
+                gState.inputState = data.inputState;
+        }
+    }
+}
+
+static int toWindowX(TigrInternal* win, int x) {
+    return (x - win->pos[0]) / win->scale;
+}
+
+static int toWindowY(TigrInternal* win, int y) {
+    return (y - win->pos[1]) / win->scale;
+}
+
+void tigrUpdate(Tigr* bmp) {
+    TigrInternal* win = tigrInternal(bmp);
+
+    processEvents(win);
+
+    win->numTouchPoints = gState.inputState.numPoints;
+    for (int i = 0; i < win->numTouchPoints; i++) {
+        win->touchPoints[i].x = toWindowX(win, gState.inputState.points[i].x);
+        win->touchPoints[i].y = toWindowY(win, gState.inputState.points[i].y);
+    }
+
+    win->mouseButtons = win->numTouchPoints;
+    if (win->mouseButtons > 0) {
+        win->mouseX = win->touchPoints[0].x;
+        win->mouseY = win->touchPoints[0].y;
+    }
+
+    if (win->flags & TIGR_AUTO) {
+        tigrResize(bmp, gState.screenW / win->scale, gState.screenH / win->scale);
+    } else {
+        win->scale = tigrEnforceScale(tigrCalcScale(bmp->w, bmp->h, gState.screenW, gState.screenH), win->flags);
+    }
+
+    tigrPosition(bmp, win->scale, gState.screenW, gState.screenH, win->pos);
+    tigrGAPIPresent(bmp, gState.screenW, gState.screenH);
+    waitForFrame();
+}
+
+int tigrClosed(Tigr* bmp) {
+    return 0;
+}
+
+void tigrError(Tigr* bmp, const char* message, ...) {
+    char tmp[1024];
+
+    va_list args;
+    va_start(args, message);
+    vsnprintf(tmp, sizeof(tmp), message, args);
+    tmp[sizeof(tmp) - 1] = 0;
+    va_end(args);
+
+    os_log_error(OS_LOG_DEFAULT, "tigr fatal error: %{public}s\n", tmp);
+
+    exit(1);
+}
+
+float tigrTime() {
+    return (float)gState.timeSinceLastDraw;
+}
+
+void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
+    TigrInternal* win = tigrInternal(bmp);
+    if (x) {
+        *x = win->mouseX;
+    }
+    if (y) {
+        *y = win->mouseY;
+    }
+    if (buttons) {
+        *buttons = win->mouseButtons;
+    }
+}
+
+int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
+    TigrInternal* win = tigrInternal(bmp);
+    for (int i = 0; i < maxPoints && i < win->numTouchPoints; i++) {
+        points[i] = win->touchPoints[i];
+    }
+    return maxPoints < win->numTouchPoints ? maxPoints : win->numTouchPoints;
+}
+
+void tigrFree(Tigr* bmp) {
+    if (bmp->handle) {
+        TigrInternal* win = tigrInternal(bmp);
+    }
+    free(bmp->pix);
+    free(bmp);
+}
+
+int tigrGAPIBegin(Tigr* bmp) {
+    (void)bmp;
+    return 0;
+}
+
+int tigrGAPIEnd(Tigr* bmp) {
+    (void)bmp;
+    return 0;
+}
+
+extern void* _tigrReadFile(const char* fileName, int* length);
+
+void* tigrReadFile(const char* fileName, int* length) {
+    id mainBundle = objc_msgSend_id(class("NSBundle"), sel("mainBundle"));
+    id resourcePath = objc_msgSend_id(mainBundle, sel("resourcePath"));
+    resourcePath = joinNSStrings(resourcePath, makeNSString("/"));
+    resourcePath = joinNSStrings(resourcePath, makeNSString(fileName));
+    return _tigrReadFile(UTF8StringFromNSString(resourcePath), length);
+}
+
+#endif // __IOS__
+
+//////// End of inlined file: tigr_ios.c ////////
 
 //////// Start of inlined file: tigr_android.h ////////
 
@@ -4446,7 +4870,6 @@ void tigrUpdate(Tigr* bmp) {
     if (win->mouseButtons > 0) {
         win->mouseX = win->touchPoints[0].x;
         win->mouseY = win->touchPoints[0].y;
-        ;
     }
 
     if (win->flags & TIGR_AUTO) {
@@ -4989,7 +5412,11 @@ void tigrGAPIPresent(Tigr *bmp, int w, int h)
 
 #ifndef __ANDROID__
 
+#ifdef __IOS__
+void* _tigrReadFile(const char* fileName, int* length) {
+#else
 void* tigrReadFile(const char* fileName, int* length) {
+#endif
     // TODO - unicode?
     FILE* file;
     char* data;
