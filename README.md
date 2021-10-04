@@ -70,5 +70,7 @@ extern "C" void tigrMain() {
 ### Building a "real" app
 You can make a distributable app based on TIMOGR. There is plenty of information of the steps involved on the [Android developer site](https://developer.android.com/studio/publish). Start by changing the application ID in `app/build.gradle`.
 
+The Android developer site also describes how to [sign your app from the command line](https://developer.android.com/studio/build/building-cmdline#sign_cmdline) or by using Gradle.
+
 ### Adding more activities
 There can be only one instance of the TIMOGR native activity. If you need another instance, you could theoretically add another native library target in `CMakeLists.txt` and refer to that in the second activity declaration in `AndroidManifest.xml`.
