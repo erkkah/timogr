@@ -33,8 +33,17 @@ void tigrPosition(Tigr *bmp, int scale, int windowW, int windowH, int out[4]);
 #include<X11/Xlib.h>
 #endif
 
-#ifdef TIGR_GAPI_GL
 #ifdef __APPLE__
+#include "TargetConditionals.h"
+#if TARGET_OS_IPHONE
+#define __IOS__ 1
+#else
+#define __MACOS__ 1
+#endif
+#endif
+
+#ifdef TIGR_GAPI_GL
+#if __MACOS__
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl3.h>
 #endif
@@ -50,6 +59,11 @@ void tigrPosition(Tigr *bmp, int scale, int windowW, int windowH, int out[4]);
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #endif
+#if __IOS__
+#define GLES_SILENCE_DEPRECATION
+#include <OpenGLES/ES3/gl.h>
+#endif
+
 typedef struct {
 	#ifdef _WIN32
 	HGLRC hglrc;
@@ -105,19 +119,19 @@ typedef struct {
 	int pos[4];
 	int lastChar;
 	char keys[256], prev[256];
-	#if defined(__APPLE__)
+	#if defined(__MACOS__)
 	int mouseInView;
 	int mouseButtons;
 	#endif
-	#ifdef __linux__
+	#if defined(__linux__) || defined(__IOS__)
 	int mouseButtons;
 	int mouseX;
 	int mouseY;
-	#endif // __linux__
-	#ifdef __ANDROID__
+	#endif // __linux__ __IOS__
+	#if defined(__ANDROID__) || defined(__IOS__)
 	int numTouchPoints;
 	TigrTouchPoint touchPoints[MAX_TOUCH_POINTS];
-	#endif // __ANDROID__
+	#endif // __ANDROID__ __IOS__
 } TigrInternal;
 // ----------------------------------------------------------
 
