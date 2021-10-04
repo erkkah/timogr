@@ -21,6 +21,7 @@ TigrInternal *tigrInternal(Tigr *bmp)
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #define WIDGET_SCALE	3
 #define WIDGET_FADE		16
@@ -456,6 +457,10 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags)
 	if (!hWnd)
 		ExitProcess(1);
 
+	if (flags & TIGR_NOCURSOR) {
+		ShowCursor(FALSE);
+	}
+
 	// Wrap a bitmap around it.
 	bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
 	bmp->handle = hWnd;
@@ -470,9 +475,8 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags)
 	win->lastChar = 0;
 	win->flags = flags;
 
-	win->hblur = win->vblur = 0;
-	win->scanlines = 0.0f;
-	win->contrast = 1.0f;
+	win->p1 = win->p2 = win->p3 = 0;
+	win->p4 = 1;
 
 	win->widgetsWanted = 0;
 	win->widgetAlpha = 0;
@@ -483,16 +487,20 @@ Tigr *tigrWindow(int w, int h, const char *title, int flags)
 
 	tigrGAPICreate(bmp);
 
-	// Try and restore our window position.
-	#ifndef TIGR_DO_NOT_PRESERVE_WINDOW_POSITION
-	if (RegQueryValueExW(tigrRegKey, wtitle, NULL, NULL, (BYTE *)&wp, &wpsize) == ERROR_SUCCESS)
-	{
-		if (wp.showCmd == SW_MAXIMIZE)
-			tigrEnterBorderlessWindowed(bmp);
-		else
-			SetWindowPlacement(hWnd, &wp);
+	if (flags & TIGR_FULLSCREEN) {
+		tigrEnterBorderlessWindowed(bmp);
+	} else {
+		// Try and restore our window position.
+		#ifndef TIGR_DO_NOT_PRESERVE_WINDOW_POSITION
+		if (RegQueryValueExW(tigrRegKey, wtitle, NULL, NULL, (BYTE *)&wp, &wpsize) == ERROR_SUCCESS)
+		{
+			if (wp.showCmd == SW_MAXIMIZE)
+				tigrEnterBorderlessWindowed(bmp);
+			else
+				SetWindowPlacement(hWnd, &wp);
+		}
+		#endif
 	}
-	#endif
 
 	wglSwapIntervalEXT_ = (PFNWGLSWAPINTERVALFARPROC_)wglGetProcAddress( "wglSwapIntervalEXT" );
 	if(wglSwapIntervalEXT_) wglSwapIntervalEXT_(1);

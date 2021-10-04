@@ -10,5 +10,5 @@ else
 	endif
 endif
 
-hello : hello.c ../../tigr.c
+shader : shader.c ../../tigr.c
 	gcc $^ -Os -o $@ $(CFLAGS) $(LDFLAGS)

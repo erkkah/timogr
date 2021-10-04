@@ -17,7 +17,7 @@ Oh, and you don't need Android Studio - it works just fine with the plain Androi
 * Clone your new repo to get the files to your machine
 * Install Android SDK (or Android Studio)
 * If not already in place, install the Android NDK (Use sdkmanager or Android Studio)
-* Make sure ANDROID_SDK_ROOT is set
+* Make sure `ANDROID_SDK_ROOT` is set, and `JAVA_HOME` if gradle cannot find the correct version below.
 * Run a test build: `./gradlew build` (that's `gradlew.bat build` on Windows)
 * Tweak `app/build/build.gradle` if the test build complains about `compileSdkVersion` or `ndkVersion`
 * Plug in your device (or run an emulator), and run `./gradlew installDebug` to install the template TIMOGR app
