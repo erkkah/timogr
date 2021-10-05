@@ -23,6 +23,16 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debug {
+            externalNativeBuild {
+                cmake {
+                    cFlags '-g'
+                }
+            }
+            packagingOptions {
+                doNotStrip '**.so'
+            }
+        }
     }
     externalNativeBuild {
         cmake {
