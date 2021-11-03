@@ -21,6 +21,8 @@ type Options struct {
 	DebuggerPort int
 	Device       string
 	SDKRoot      string
+	Build        bool
+	Debug        bool
 }
 
 func parseOptions() Options {
@@ -32,6 +34,8 @@ func parseOptions() Options {
 	flag.IntVar(&options.DebuggerPort, "port", 6666, "Debugger communication port")
 	flag.IntVar(&options.JDWPPort, "jdwpport", 6667, "JDWP communication port")
 	flag.StringVar(&options.Device, "device", "", "Device identifier")
+	flag.BoolVar(&options.Build, "build", false, "Build before debug")
+	flag.BoolVar(&options.Debug, "debug", true, "Start debug session")
 	flag.Parse()
 
 	if options.SDKRoot == "" {
@@ -51,6 +55,13 @@ func parseOptions() Options {
 func main() {
 	options := parseOptions()
 
+	if options.Build {
+		err := buildAndInstall()
+		if err != nil {
+			fatal(fmt.Sprintf("Build failed: %v", err))
+		}
+	}
+
 	manifest, err := parseManifest(options.Manifest)
 	if err != nil {
 		fatal("Failed to parse manifest")
@@ -69,6 +80,8 @@ func main() {
 	if err != nil {
 		fatal("Failed to list devices")
 	}
+
+	stopOnly := false
 
 	if flag.Arg(0) == "devices" {
 		if len(devices) == 0 {
@@ -97,6 +110,8 @@ func main() {
 			fatal(fmt.Sprintf("Failed to launch emulator (output from emulator tool):\n%v", err))
 		}
 		os.Exit(0)
+	} else if flag.Arg(0) == "stop" {
+		stopOnly = true
 	}
 
 	if len(devices) == 0 {
@@ -124,12 +139,16 @@ func main() {
 
 	fmt.Printf("Connecting to %q\n", adb.Model())
 
+	adb.KillOldProcesses()
+
+	if stopOnly {
+		os.Exit(0)
+	}
+
 	arch, err := adb.Arch()
 	if err != nil {
 		fatal(fmt.Sprintf("Failed to get device arch: %v", err))
 	}
-
-	adb.KillOldProcesses()
 
 	fmt.Println("Starting application")
 	if err = adb.StartApplication(manifest.mainActivityIntent()); err != nil {
@@ -137,6 +156,10 @@ func main() {
 	}
 
 	fmt.Printf("Application running with PID %v\n", adb.PID)
+
+	if !options.Debug {
+		os.Exit(0)
+	}
 
 	server := findDebugServer(options.SDKRoot, arch)
 	fmt.Printf("Using debug server at %q\n", server)

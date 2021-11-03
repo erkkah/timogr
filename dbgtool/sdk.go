@@ -37,10 +37,9 @@ func findPath(root string, pathSuffix string) string {
 }
 
 func getApplicationID() (string, error) {
-	// ??? Fix windows case!
-	output, err := runCommand("./gradlew", "printAppID")
+	output, err := runGradleCommand("printAppID")
 	if err != nil {
-		return "", fmt.Errorf("%v", string(output))
+		return "", err
 	}
 	lines := strings.Split(string(output), "\n")
 	appID := ""
@@ -51,6 +50,20 @@ func getApplicationID() (string, error) {
 		}
 	}
 	return appID, nil
+}
+
+func buildAndInstall() error {
+	_, err := runGradleCommand("installDebug")
+	return err
+}
+
+func runGradleCommand(args ...string) (string, error) {
+	// ??? Fix windows case!
+	output, err := runCommand("./gradlew", args...)
+	if err != nil {
+		return "", fmt.Errorf("%v", string(output))
+	}
+	return output, nil
 }
 
 type AndroidManifest struct {
