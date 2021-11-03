@@ -119,6 +119,7 @@ func main() {
 
 	adb.KillOldProcesses()
 
+	fmt.Println("Starting application")
 	if err = adb.StartApplication(); err != nil {
 		fatal("Failed to start application")
 	}
@@ -139,29 +140,38 @@ func main() {
 
 	debugSocket := fmt.Sprintf("/%v/debug.sock", options.Package)
 	if err = setupForwards(adb, options.DebuggerPort, options.JDWPPort, debugSocket); err != nil {
-		fatal("failed to setup port forwards")
+		fatal("Failed to setup port forwards")
 	}
 
 	jDebugger := NewJDWP(options.JDWPPort)
 	if err = jDebugger.Connect(); err != nil {
-		fatal("failed to connect to java debug server")
+		fatal("Failed to connect to java debug server")
 	}
 	defer jDebugger.Close()
 
 	serverError := startDebugServer(adb, debugSocket)
 
 	if err = jDebugger.Resume(); err != nil {
-		fatal("failed to resume VM")
+		fatal("Failed to resume VM")
 	}
 
 	fmt.Println("Ready for debugger")
 
-	err = <-serverError
-	if err != nil {
-		fatal("debug server error")
+	tailError := adb.TailLog()
+
+	select {
+	case err = <-serverError:
+		if err != nil {
+			fatal("Debug server error")
+		}
+	case err = <-tailError:
+		if err != nil {
+			fatal("Logcat error")
+		}
 	}
 
 	fmt.Println("Closing debug session")
+	adb.KillOldProcesses()
 }
 
 func startDebugServer(adb *ADB, socket string) <-chan error {

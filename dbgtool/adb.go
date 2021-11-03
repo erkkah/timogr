@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -104,6 +106,8 @@ func (adb *ADB) KillOldProcesses() {
 }
 
 func (adb *ADB) waitForPID() (string, error) {
+	timeout := time.After(time.Second * 5)
+
 	for {
 		processList, err := adb.remote("ps")
 		if err != nil {
@@ -116,7 +120,12 @@ func (adb *ADB) waitForPID() (string, error) {
 				return columns[1], nil
 			}
 		}
-		time.Sleep(time.Millisecond * 100)
+		select {
+		case <-time.After(time.Millisecond * 100):
+			break
+		case <-timeout:
+			return "", errors.New("Timeout")
+		}
 	}
 }
 
@@ -124,6 +133,61 @@ func (adb *ADB) StartApplication() error {
 	_, err := adb.shell(fmt.Sprintf("am start-activity -S -D %s/android.app.NativeActivity", adb.appPackage))
 	adb.PID, err = adb.waitForPID()
 	return err
+}
+
+func (adb *ADB) TailLog() <-chan error {
+	errors := make(chan error)
+	cmd := exec.Command("adb", "-t", adb.transportID, "logcat", fmt.Sprintf("--pid=%v", adb.PID))
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		errors <- err
+		return errors
+	}
+	stdin, err := cmd.StdoutPipe()
+	if err != nil {
+		errors <- err
+		return errors
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			bytesRead, err := stderr.Read(buf)
+			if err != nil {
+				break
+			}
+			fmt.Print(string(buf[0:bytesRead]))
+		}
+		wg.Done()
+	}()
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			bytesRead, err := stdin.Read(buf)
+			if err != nil {
+				break
+			}
+			fmt.Print(string(buf[0:bytesRead]))
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		err = cmd.Start()
+		if err != nil {
+			errors <- err
+			return
+		}
+		wg.Wait()
+		err = cmd.Wait()
+		if err != nil {
+			errors <- err
+		}
+	}()
+
+	return errors
 }
 
 func (adb *ADB) InstallFile(src string, destDir string) error {
