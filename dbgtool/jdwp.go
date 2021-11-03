@@ -20,10 +20,12 @@ func NewJDWP(port int) JDWP {
 func (jc *JDWP) Connect() error {
 	var err error
 
-	jc.conn, err = net.DialTimeout("tcp", "localhost:6667", time.Second*5)
+	jc.conn, err = net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", jc.port), time.Second*5)
 	if err != nil {
 		return err
 	}
+
+	jc.conn.SetDeadline(time.Now().Add(time.Second * 5))
 
 	handshakeMessage := "JDWP-Handshake"
 	_, err = jc.conn.Write([]byte(handshakeMessage))
