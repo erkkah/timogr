@@ -15,6 +15,7 @@ func fatal(message string) {
 }
 
 type Options struct {
+	Manifest     string
 	Package      string
 	JDWPPort     int
 	DebuggerPort int
@@ -25,16 +26,13 @@ type Options struct {
 func parseOptions() Options {
 	var options Options
 
-	flag.StringVar(&options.Package, "package", "com.example.timogr", "Application package")
+	flag.StringVar(&options.Manifest, "manifest", "app/src/main/AndroidManifest.xml", "Android manifest file")
+	flag.StringVar(&options.Package, "package", "", "Application package")
 	flag.StringVar(&options.SDKRoot, "sdkroot", "", "Android SDK root")
 	flag.IntVar(&options.DebuggerPort, "port", 6666, "Debugger communication port")
 	flag.IntVar(&options.JDWPPort, "jdwpport", 6667, "JDWP communication port")
 	flag.StringVar(&options.Device, "device", "", "Device identifier")
 	flag.Parse()
-
-	if options.Package == "" {
-		fatal("Application package not specified")
-	}
 
 	if options.SDKRoot == "" {
 		found := false
@@ -52,6 +50,20 @@ func parseOptions() Options {
 
 func main() {
 	options := parseOptions()
+
+	manifest, err := parseManifest(options.Manifest)
+	if err != nil {
+		fatal("Failed to parse manifest")
+	}
+	if options.Package == "" {
+		options.Package, err = getApplicationID()
+		if err != nil {
+			fatal("Failed to get package using gradle")
+		}
+	}
+	if options.Package == "" {
+		fatal("Application package not specified")
+	}
 
 	devices, err := ListDevices()
 	if err != nil {
@@ -120,8 +132,8 @@ func main() {
 	adb.KillOldProcesses()
 
 	fmt.Println("Starting application")
-	if err = adb.StartApplication(); err != nil {
-		fatal("Failed to start application")
+	if err = adb.StartApplication(manifest.mainActivityIntent()); err != nil {
+		fatal(fmt.Sprintf("Failed to start application: %v", err))
 	}
 
 	fmt.Printf("Application running with PID %v\n", adb.PID)
@@ -143,12 +155,14 @@ func main() {
 		fatal("Failed to setup port forwards")
 	}
 
+	fmt.Printf("Connecting to java debug server at %v\n", options.JDWPPort)
 	jDebugger := NewJDWP(options.JDWPPort)
 	if err = jDebugger.Connect(); err != nil {
 		fatal("Failed to connect to java debug server")
 	}
 	defer jDebugger.Close()
 
+	fmt.Printf("Starting debug server\n")
 	serverError := startDebugServer(adb, debugSocket)
 
 	if err = jDebugger.Resume(); err != nil {

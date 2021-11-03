@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/xml"
+	"fmt"
 	"io/fs"
+	"io/ioutil"
 	"path"
 	"path/filepath"
 	"strings"
@@ -31,4 +34,51 @@ func findPath(root string, pathSuffix string) string {
 	})
 
 	return found
+}
+
+func getApplicationID() (string, error) {
+	// ??? Fix windows case!
+	output, err := runCommand("./gradlew", "printAppID")
+	if err != nil {
+		return "", fmt.Errorf("%v", string(output))
+	}
+	lines := strings.Split(string(output), "\n")
+	appID := ""
+	for _, line := range lines {
+		if strings.HasPrefix(line, "APPID:") {
+			appID = strings.TrimSpace(strings.TrimPrefix(line, "APPID:"))
+			break
+		}
+	}
+	return appID, nil
+}
+
+type AndroidManifest struct {
+	Package     string `xml:"package,attr"`
+	Application struct {
+		Activity struct {
+			Name string `xml:"name,attr"`
+		} `xml:"activity"`
+	} `xml:"application"`
+}
+
+func (m *AndroidManifest) mainActivityIntent() string {
+	activityName := m.Application.Activity.Name
+	if strings.HasPrefix(activityName, ".") {
+		activityName = m.Package + activityName
+	}
+	return activityName
+}
+
+func parseManifest(manifest string) (*AndroidManifest, error) {
+	bytes, err := ioutil.ReadFile(manifest)
+	if err != nil {
+		return nil, err
+	}
+	var parsed AndroidManifest
+	err = xml.Unmarshal(bytes, &parsed)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }

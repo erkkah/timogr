@@ -129,8 +129,11 @@ func (adb *ADB) waitForPID() (string, error) {
 	}
 }
 
-func (adb *ADB) StartApplication() error {
-	_, err := adb.shell(fmt.Sprintf("am start-activity -S -D %s/android.app.NativeActivity", adb.appPackage))
+func (adb *ADB) StartApplication(intent string) error {
+	output, err := adb.shell(fmt.Sprintf("am start-activity -S -D %s/%s", adb.appPackage, intent))
+	if err != nil {
+		return fmt.Errorf("%s, %w", string(output), err)
+	}
 	adb.PID, err = adb.waitForPID()
 	return err
 }
