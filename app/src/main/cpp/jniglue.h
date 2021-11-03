@@ -14,6 +14,16 @@ class JNIGlue {
         _env->PopLocalFrame(NULL);
     }
 
+    jobject callObjectMethod(jclass clazz, const char* method, const char* signature, jobject instance, ...) {
+        jmethodID methodID = _env->GetMethodID(clazz, method, signature);
+        va_list args;
+        va_start(args, instance);
+        jobject result = _env->CallObjectMethodV(instance, methodID, args);
+        va_end(args);
+        checkException();
+        return result;
+    }
+
     jobject callObjectMethod(const char* className, const char* method, const char* signature, jobject instance, ...) {
         jmethodID methodID = getMethod(className, method, signature);
         va_list args;
@@ -34,11 +44,30 @@ class JNIGlue {
         return result;
     }
 
+    void callVoidMethod(jobject instance, const char* method, const char* signature, ...) {
+        jclass clazz = _env->GetObjectClass(instance);
+        jmethodID methodID = _env->GetMethodID(clazz, method, signature);
+        va_list args;
+        va_start(args, signature);
+        _env->CallVoidMethodV(instance, methodID, args);
+        va_end(args);
+        checkException();
+    }
+
     void callVoidMethod(const char* className, const char* method, const char* signature, jobject instance, ...) {
         jmethodID methodID = getMethod(className, method, signature);
         va_list args;
         va_start(args, instance);
         _env->CallVoidMethodV(instance, methodID, args);
+        va_end(args);
+        checkException();
+    }
+
+    void callStaticVoidMethod(jclass clazz, const char* method, const char* signature, ...) {
+        jmethodID methodID = _env->GetMethodID(clazz, method, signature);
+        va_list args;
+        va_start(args, signature);
+        _env->CallStaticVoidMethodV(clazz, methodID, args);
         va_end(args);
         checkException();
     }

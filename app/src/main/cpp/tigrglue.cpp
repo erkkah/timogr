@@ -139,9 +139,14 @@ void startTigr(ANativeActivity* a) {
             looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
             ALooper_addFd(looper, messageReadFd, MAIN_ID, ALOOPER_EVENT_INPUT, nullptr, nullptr);
 
+            JNIEnv* threadEnv;
+            activity->vm->AttachCurrentThread(&threadEnv, nullptr);
+
             tigrThreadState = TIGR_ALIVE;
 
             tigrMain();
+
+            activity->vm->DetachCurrentThread();
 
             if (inputQueue != 0) {
                 AInputQueue_detachLooper(inputQueue);
@@ -414,4 +419,13 @@ extern "C" void* android_loadAsset(const char* filename, int* oLength) {
 
     AAsset_close(asset);
     return assetBuffer;
+}
+
+extern "C" void android_showKeyboard(int show) {
+    JavaVM* vm = activity->vm;
+    JNIGlue glue(vm);
+    
+    jobject javaActivity = activity->clazz;
+
+    glue.callVoidMethod(javaActivity, "showKeyboard", "(Z)V", show);
 }
