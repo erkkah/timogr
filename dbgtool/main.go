@@ -103,8 +103,18 @@ func main() {
 			}
 		}
 		os.Exit(0)
-	} else if flag.Arg(0) == "launch" {
+	} else if flag.Arg(0) == "emulator" {
 		emulator := flag.Arg(1)
+		if emulator == "" {
+			emulators, err := ListEmulators(options.SDKRoot)
+			if err != nil {
+				fatal("Failed to list emulators")
+			}
+			if len(emulators) == 0 {
+				fatal("No emulators found")
+			}
+			emulator = emulators[0]
+		}
 		err := LaunchEmulator(options.SDKRoot, emulator)
 		if err != nil {
 			fatal(fmt.Sprintf("Failed to launch emulator (output from emulator tool):\n%v", err))

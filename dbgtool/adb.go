@@ -54,7 +54,7 @@ func LaunchEmulator(SDKRoot string, emulator string) error {
 	if err != nil {
 		return err
 	}
-	output, err := runCommand(emulatorPath, "-avd", emulator)
+	output, err := runCommand(emulatorPath, "-avd", emulator, "-dns-server", "8.8.8.8")
 	if err != nil {
 		return fmt.Errorf(string(output))
 	}
