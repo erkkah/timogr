@@ -421,7 +421,7 @@ extern "C" void* android_loadAsset(const char* filename, int* oLength) {
     return assetBuffer;
 }
 
-extern "C" void android_showKeyboard(int show) {
+extern "C" void tigrShowKeyboard(int show) {
     JavaVM* vm = activity->vm;
     JNIGlue glue(vm);
     
