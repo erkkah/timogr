@@ -1,4 +1,4 @@
-// TIGR - TIny GRaphics Library - v2.2
+// TIGR - TIny GRaphics Library - v2.4
 //        ^^   ^^
 //
 // rawr.
@@ -38,7 +38,7 @@ typedef struct {
 
 // Window flags.
 #define TIGR_FIXED      0   // window's bitmap is a fixed size (default)
-#define TIGR_AUTO       1   // window's bitmap will automatically resize after each tigrUpdate
+#define TIGR_AUTO       1   // window's bitmap is scaled with the window
 #define TIGR_2X         2   // always enforce (at least) 2X pixel scale
 #define TIGR_3X         4   // always enforce (at least) 3X pixel scale
 #define TIGR_4X         8   // always enforce (at least) 4X pixel scale
@@ -48,12 +48,30 @@ typedef struct {
 
 // A Tigr bitmap.
 typedef struct Tigr {
-    int w, h;       // width/height (unscaled)
-    TPixel *pix;    // pixel data
-    void *handle;   // OS window handle, NULL for off-screen bitmaps.
+    int w, h;           // width/height (unscaled)
+    int cx, cy, cw, ch; // clip rect
+    TPixel *pix;        // pixel data
+    void *handle;       // OS window handle, NULL for off-screen bitmaps.
+    int blitMode;       // Target bitmap blit mode
 } Tigr;
 
-// Creates a new empty window. (title is UTF-8)
+// Creates a new empty window with a given bitmap size.
+//
+// Title is UTF-8.
+//
+// In TIGR_FIXED mode, the window is made as large as possible to contain an integer-scaled
+// version of the bitmap while still fitting on the screen. Resizing the window will adapt
+// the scale in integer steps to fit the bitmap.
+//
+// In TIGR_AUTO mode, the initial window size is set to the bitmap size times the pixel
+// scale. Resizing the window will resize the bitmap using the specified scale.
+// For example, in forced 2X mode, the window will be twice as wide (and high) as the bitmap.
+//
+// Turning on TIGR_RETINA mode will request full backing resolution on OSX, meaning that
+// the effective window size might be integer scaled to a larger size. In TIGR_AUTO mode,
+// this means that the Tigr bitmap will change size if the window is moved between
+// retina and non-retina screens.
+//
 Tigr *tigrWindow(int w, int h, const char *title, int flags);
 
 // Creates an empty off-screen bitmap.
@@ -65,7 +83,7 @@ void tigrFree(Tigr *bmp);
 // Returns non-zero if the user requested to close a window.
 int tigrClosed(Tigr *bmp);
 
-// Displays a window's contents on-screen.
+// Displays a window's contents on-screen and updates input.
 void tigrUpdate(Tigr *bmp);
 
 // Called before doing direct OpenGL calls and before tigrUpdate.
@@ -89,7 +107,7 @@ void tigrSetPostFX(Tigr *bmp, float p1, float p2, float p3, float p4);
 // Drawing ----------------------------------------------------------------
 
 // Helper for reading/writing pixels.
-// For high performance, just write to bmp->pix yourself.
+// For high performance, just access bmp->pix directly.
 TPixel tigrGet(Tigr *bmp, int x, int y);
 void tigrPlot(Tigr *bmp, int x, int y, TPixel pix);
 
@@ -105,18 +123,55 @@ void tigrRect(Tigr *bmp, int x, int y, int w, int h, TPixel color);
 // Draws a line.
 void tigrLine(Tigr *bmp, int x0, int y0, int x1, int y1, TPixel color);
 
+// Sets clip rect for blit operations.
+// Set to (0, 0, -1, -1) to reset clipping to full bitmap.
+void tigrClip(Tigr *bmp, int cx, int cy, int cw, int ch);
+
 // Copies bitmap data.
 // dx/dy = dest co-ordinates
 // sx/sy = source co-ordinates
 // w/h   = width/height
+//
+// RGBAdest = RGBAsrc
 void tigrBlit(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h);
 
-// Same as tigrBlit, but blends with the bitmap alpha channel,
-// and uses the 'alpha' variable to fade out.
+// Same as tigrBlit, but alpha blends the source bitmap with the
+// target using per pixel alpha and the specified global alpha.
+//
+// Ablend = Asrc * alpha
+// RGBdest = RGBsrc * Ablend + RGBdest * (1 - Ablend)
+//
+// Blit mode == TIGR_KEEP_ALPHA:
+// Adest = Adest
+//
+// Blit mode == TIGR_BLEND_ALPHA:
+// Adest = Asrc * Ablend + Adest * (1 - Ablend)
 void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, float alpha);
 
-// Same as tigrBlit, but tints the source bitmap with a color.
+// Same as tigrBlit, but tints the source bitmap with a color
+// and alpha blends the resulting source with the destination.
+//
+// Rblend = Rsrc * Rtint
+// Gblend = Gsrc * Gtint
+// Bblend = Bsrc * Btint
+// Ablend = Asrc * Atint
+//
+// RGBdest = RGBblend * Ablend + RGBdest * (1 - Ablend)
+//
+// Blit mode == TIGR_KEEP_ALPHA:
+// Adest = Adest
+//
+// Blit mode == TIGR_BLEND_ALPHA:
+// Adest = Ablend * Ablend + Adest * (1 - Ablend)
 void tigrBlitTint(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, TPixel tint);
+
+enum TIGRBlitMode {
+    TIGR_KEEP_ALPHA = 0,    // Keep destination alpha value
+    TIGR_BLEND_ALPHA = 1,   // Blend destination alpha (default)
+};
+
+// Set destination bitmap blend mode for blit operations.
+void tigrBlitMode(Tigr *dest, int mode);
 
 // Helper for making colors.
 TIGR_INLINE TPixel tigrRGB(unsigned char r, unsigned char g, unsigned char b)
@@ -154,6 +209,9 @@ TigrFont *tigrLoadFont(Tigr *bitmap, int codepage);
 void tigrFreeFont(TigrFont *font);
 
 // Prints UTF-8 text onto a bitmap.
+// NOTE:
+//  This uses the target bitmap blit mode.
+//  See tigrBlitTint for details.
 void tigrPrint(Tigr *dest, TigrFont *font, int x, int y, TPixel color, const char *text, ...);
 
 // Returns the width/height of a string.
@@ -199,6 +257,10 @@ int tigrKeyHeld(Tigr *bmp, int key);
 // Reads character input for a window.
 // Returns the Unicode value of the last key pressed, or 0 if none.
 int tigrReadChar(Tigr *bmp);
+
+// Show / hide virtual keyboard.
+// (Only available on iOS / Android)
+void tigrShowKeyboard(int show);
 
 
 // Bitmap I/O -------------------------------------------------------------
