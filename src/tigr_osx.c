@@ -48,6 +48,12 @@ extern id const NSDefaultRunLoopMode;
 
 bool terminated = false;
 
+static uint64_t tigrTimestamp = 0;
+
+void _tigrResetTime() {
+	tigrTimestamp = mach_absolute_time();
+}
+
 TigrInternal* _tigrInternalCocoa(id window) {
     if (!window)
         return NULL;
@@ -70,6 +76,22 @@ NSUInteger applicationShouldTerminate(id self, SEL _sel, id sender) {
 void windowWillClose(id self, SEL _sel, id notification) {
     NSUInteger value = true;
     object_setInstanceVariable(self, "closed", (void*)value);
+    object_setInstanceVariable(self, "tigrHandle", (void*)0);
+}
+
+void windowDidEnterFullScreen(id self, SEL _sel, id notification) {
+    NSUInteger value = true;
+    object_setInstanceVariable(self, "visible", (void*)value);
+}
+
+void windowDidResize(id self, SEL _sel, id notification) {
+    TigrInternal* win;
+    Tigr* bmp = 0;
+    object_getInstanceVariable(self, "tigrHandle", (void**)&bmp);
+    win = bmp ? tigrInternal(bmp) : NULL;
+    if (win) {
+        win->mouseButtons = 0;
+    }
 }
 
 void windowDidBecomeKey(id self, SEL _sel, id notification) {
@@ -89,27 +111,40 @@ void windowDidBecomeKey(id self, SEL _sel, id notification) {
 void mouseEntered(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
-    win->mouseInView = 1;
-    if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id(class("NSCursor"), sel("hide"));
+    if (win) {
+        win->mouseInView = 1;
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("hide"));
+        }
     }
 }
 
 void mouseExited(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
-    win->mouseInView = 0;
-    if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id(class("NSCursor"), sel("unhide"));
+    if (win) {
+        win->mouseInView = 0;
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("unhide"));
+        }
     }
 }
 
-bool _tigrCocoaIsWindowClosed(id window) {
+bool _tigrIsWindowClosed(id window) {
     id wdg = objc_msgSend_id(window, sel("delegate"));
     if (!wdg)
         return false;
     NSUInteger value = 0;
     object_getInstanceVariable(wdg, "closed", (void**)&value);
+    return value ? true : false;
+}
+
+bool _tigrIsWindowVisible(id window) {
+    id wdg = objc_msgSend_id(window, sel("delegate"));
+    if (!wdg)
+        return false;
+    NSUInteger value = 0;
+    object_getInstanceVariable(wdg, "visible", (void**)&value);
     return value ? true : false;
 }
 
@@ -197,23 +232,20 @@ void tigrInitOSX() {
 }
 
 void tigrError(Tigr* bmp, const char* message, ...) {
-    char tmp[1024];
+	char tmp[1024];
 
-    va_list args;
-    va_start(args, message);
-    vsnprintf(tmp, sizeof(tmp), message, args);
-    tmp[sizeof(tmp) - 1] = 0;
-    va_end(args);
+	va_list args;
+	va_start(args, message);
+	vsnprintf(tmp, sizeof(tmp), message, args);
+	tmp[sizeof(tmp)-1] = 0;
+	va_end(args);
 
-    CFStringRef header = CFStringCreateWithCString(NULL, "Error", kCFStringEncodingUTF8);
-    CFStringRef msg = CFStringCreateWithCString(NULL, tmp, kCFStringEncodingUTF8);
-    CFUserNotificationDisplayNotice(0.0, kCFUserNotificationStopAlertLevel, NULL, NULL, NULL, header, msg, NULL);
-    CFRelease(header);
-    CFRelease(msg);
-    exit(1);
+	printf("tigr fatal error: %s\n", tmp);
+
+	exit(1);
 }
 
-NSSize _tigrCocoaWindowSize(id window) {
+NSSize _tigrContentBackingSize(id window) {
     id contentView = objc_msgSend_id(window, sel("contentView"));
     NSRect rect = objc_msgSend_stret_t(NSRect)(contentView, sel("frame"));
     rect = objc_msgSend_stret_t(NSRect, NSRect)(contentView, sel("convertRectToBacking:"), rect);
@@ -232,19 +264,18 @@ enum {
 };
 
 Tigr* tigrWindow(int w, int h, const char* title, int flags) {
-    int scale;
     Tigr* bmp;
     TigrInternal* win;
 
     tigrInitOSX();
 
-    NSUInteger windowStyleMask = NSWindowStyleRegular;
+    NSUInteger windowStyleMask = NSWindowStyleRegular & ~NSWindowStyleMaskMiniaturizable;
 
-    if (flags & TIGR_AUTO) {
-        // Always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
-        scale = 1;
-    } else {
-        // See how big we can make it and still fit on-screen.
+    // In AUTO mode, window follows requested size, unless downscaled by tigrEnforceScale below.
+    int windowScale = 1;
+    
+    // In non-AUTO mode, see how big we can make it and still fit on-screen.
+    if ((flags & TIGR_AUTO) == 0) {
         CGRect mainMonitor = CGDisplayBounds(CGMainDisplayID());
         int maxW = CGRectGetWidth(mainMonitor);
         int maxH = CGRectGetHeight(mainMonitor);
@@ -253,26 +284,26 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
             class("NSWindow"), sel("contentRectForFrameRect:styleMask:"),
             screen, windowStyleMask
         );
-        scale = tigrCalcScale(w, h, content.size.width, content.size.height);
+        windowScale = tigrCalcScale(w, h, content.size.width, content.size.height);
     }
 
-    scale = tigrEnforceScale(scale, flags);
+    windowScale = tigrEnforceScale(windowScale, flags);
 
-    NSRect rect = { { 0, 0 }, { w * scale, h * scale } };
+    NSRect rect = { { 0, 0 }, { w * windowScale, h * windowScale } };
     id windowAlloc = objc_msgSend_id(class("NSWindow"), sel("alloc"));
     id window = ((id(*)(id, SEL, NSRect, NSUInteger, NSUInteger, BOOL))objc_msgSend)(
         windowAlloc, sel("initWithContentRect:styleMask:backing:defer:"), rect, windowStyleMask, 2, NO);
 
-    if (flags & TIGR_FULLSCREEN) {
-        objc_msgSend_void_id(window, sel("toggleFullScreen:"), window);
-    }
 
     objc_msgSend_void_bool(window, sel("setReleasedWhenClosed:"), NO);
 
     Class WindowDelegateClass = objc_allocateClassPair((Class)objc_getClass("NSObject"), "WindowDelegate", 0);
     addIvar(WindowDelegateClass, "closed", sizeof(NSUInteger), NSUIntegerEncoding);
+    addIvar(WindowDelegateClass, "visible", sizeof(NSUInteger), NSUIntegerEncoding);
     addIvar(WindowDelegateClass, "tigrHandle", sizeof(void*), "ˆv");
     addMethod(WindowDelegateClass, "windowWillClose:", windowWillClose, "v@:@");
+    addMethod(WindowDelegateClass, "windowDidEnterFullScreen:", windowDidEnterFullScreen, "v@:@");
+    addMethod(WindowDelegateClass, "windowDidResize:", windowDidResize, "v@:@");
     addMethod(WindowDelegateClass, "windowDidBecomeKey:", windowDidBecomeKey, "v@:@");
     addMethod(WindowDelegateClass, "mouseEntered:", mouseEntered, "v@:@");
     addMethod(WindowDelegateClass, "mouseExited:", mouseExited, "v@:@");
@@ -280,12 +311,22 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel("alloc"));
     id wdg = objc_msgSend_id(wdgAlloc, sel("init"));
 
+    if (flags & TIGR_FULLSCREEN) {
+        objc_msgSend_void_id(window, sel("toggleFullScreen:"), window);
+        if (flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("hide"));
+        }
+    } else {
+        NSUInteger value = true;
+        object_setInstanceVariable(wdg, "visible", (void*)value);
+    }
+
     objc_msgSend_void_id(window, sel("setDelegate:"), wdg);
 
     id contentView = objc_msgSend_id(window, sel("contentView"));
 
-    if (flags & TIGR_RETINA)
-        objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), YES);
+	int wantsHighRes = (flags & TIGR_RETINA);
+    objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), wantsHighRes);
 
     NSPoint point = { 20, 20 };
     ((void (*)(id, SEL, NSPoint))objc_msgSend)(window, sel("cascadeTopLeftFromPoint:"), point);
@@ -301,7 +342,8 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
                                 // 72,			//	NSOpenGLPFANoRecovery,
                                 // 55, 1,		//	NSOpenGLPFASampleBuffers, 1,
                                 // 56, 4,		//	NSOpenGLPFASamples, 4,
-                                99, 0x3200,  //	NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+                                99, 0x3200,     //	NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+                                // 70, 0x00020400, // NSOpenGLPFARendererID, kCGLRendererGenericFloatID
                                 0 };
 
     id pixelFormat = objc_alloc("NSOpenGLPixelFormat");
@@ -320,13 +362,26 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     id blackColor = objc_msgSend_id(class("NSColor"), sel("blackColor"));
     objc_msgSend_void_id(window, sel("setBackgroundColor:"), blackColor);
 
-    // TODO do we really need this?
     objc_msgSend_void_bool(NSApp, sel("activateIgnoringOtherApps:"), YES);
 
     // Wrap a bitmap around it.
-    NSSize windowSize = _tigrCocoaWindowSize(window);
     bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
     bmp->handle = window;
+
+    NSSize windowContentSize = _tigrContentBackingSize(window);
+
+    // In AUTO mode, always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
+    int bitmapScale = 1;
+    
+    // In non-AUTO mode, scale based on backing size
+    if ((flags & TIGR_AUTO) == 0) {
+        bitmapScale = tigrEnforceScale(tigrCalcScale(w, h, windowContentSize.width, windowContentSize.height), flags); 
+    } else {
+        // In AUTO mode, bitmap size follows window size
+        w = windowContentSize.width / windowScale;
+        h = windowContentSize.height / windowScale;
+        bitmapScale = tigrEnforceScale(bitmapScale, flags);
+    }
 
     // Set the handle
     object_setInstanceVariable(wdg, "tigrHandle", (void*)bmp);
@@ -349,7 +404,7 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win = tigrInternal(bmp);
     win->shown = 0;
     win->closed = 0;
-    win->scale = scale;
+    win->scale = bitmapScale;
     win->lastChar = 0;
     win->flags = flags;
 	win->p1 = win->p2 = win->p3 = 0;
@@ -378,8 +433,12 @@ void tigrFree(Tigr* bmp) {
 
         id window = (id)bmp->handle;
 
-        if (!_tigrCocoaIsWindowClosed(window) && !terminated) {
+        if (!_tigrIsWindowClosed(window) && !terminated) {
             objc_msgSend_void(window, sel("close"));
+        }
+
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("unhide"));
         }
 
         id wdg = objc_msgSend_id(window, sel("delegate"));
@@ -798,13 +857,21 @@ void _tigrOnCocoaEvent(id event, id window) {
         }
         case 10:  // NSKeyDown
         {
-            id inputText = objc_msgSend_id(event, sel("characters"));
-            const char* inputTextUTF8 = objc_msgSend_t(const char*)(inputText, sel("UTF8String"));
-
-            tigrDecodeUTF8(inputTextUTF8, &win->lastChar);
-
             uint16_t keyCode = objc_msgSend_t(unsigned short)(event, sel("keyCode"));
-            win->keys[_tigrKeyFromOSX(keyCode)] = 1;
+            int tigrKey = _tigrKeyFromOSX(keyCode);
+
+            // Ignore keyboard repeats
+            if (!win->keys[tigrKey]) {
+                win->keys[tigrKey] = 1;
+                id inputText = objc_msgSend_id(event, sel("characters"));
+                const char* inputTextUTF8 = objc_msgSend_t(const char*)(inputText, sel("UTF8String"));
+
+                int decoded = 0;
+                tigrDecodeUTF8(inputTextUTF8, &decoded);
+                if (decoded < 0xe000 || decoded > 0xf8ff) {
+                    win->lastChar = decoded;
+                }
+            }
 
             // Pass through cmd+key
             if (win->keys[TK_LWIN]) {
@@ -836,7 +903,7 @@ void tigrUpdate(Tigr* bmp) {
     window = (id)bmp->handle;
     openGLContext = (id)win->gl.glContext;
 
-    if (terminated || _tigrCocoaIsWindowClosed(window)) {
+    if (terminated || _tigrIsWindowClosed(window)) {
         return;
     }
 
@@ -851,6 +918,9 @@ void tigrUpdate(Tigr* bmp) {
 
     id distantPast = objc_msgSend_id(class("NSDate"), sel("distantPast"));
     id event = 0;
+    int processedEvents;
+    BOOL visible = 0;
+
     do {
         event = objc_msgSend_t(id, NSUInteger, id, id, BOOL)(
             NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), eventMask, distantPast,
@@ -858,16 +928,25 @@ void tigrUpdate(Tigr* bmp) {
         );
 
         if (event != 0) {
+            processedEvents++;
             _tigrOnCocoaEvent(event, window);
+        } else {
+            visible = _tigrIsWindowVisible(window);
         }
-    } while (event != 0);
+    } while (event != 0 || !visible);
+
+    if (processedEvents) {
+        // The event processing loop above is blocking, which causes timing to freeze.
+        // Reset the time here to hide that fact from client code.
+        _tigrResetTime();
+    }
 
     // do runloop stuff
     objc_msgSend_void(NSApp, sel("updateWindows"));
     objc_msgSend_void(openGLContext, sel("update"));
     tigrGAPIBegin(bmp);
 
-    NSSize windowSize = _tigrCocoaWindowSize(window);
+    NSSize windowSize = _tigrContentBackingSize(window);
 
     if (win->flags & TIGR_AUTO)
         tigrResize(bmp, windowSize.width / win->scale, windowSize.height / win->scale);
@@ -893,7 +972,7 @@ int tigrGAPIEnd(Tigr* bmp) {
 }
 
 int tigrClosed(Tigr* bmp) {
-    return (terminated || _tigrCocoaIsWindowClosed((id)bmp->handle)) ? 1 : 0;
+    return (terminated || _tigrIsWindowClosed((id)bmp->handle)) ? 1 : 0;
 }
 
 void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
@@ -968,18 +1047,17 @@ int tigrReadChar(Tigr* bmp) {
 }
 
 float tigrTime() {
-    static uint64_t time = 0;
     static mach_timebase_info_data_t timebaseInfo;
 
     if (timebaseInfo.denom == 0) {
         mach_timebase_info(&timebaseInfo);
-        time = mach_absolute_time();
+        tigrTimestamp = mach_absolute_time();
         return 0.0f;
     }
 
     uint64_t current_time = mach_absolute_time();
-    double elapsed = (double)(current_time - time) * timebaseInfo.numer / (timebaseInfo.denom * 1000000000.0);
-    time = current_time;
+    double elapsed = (double)(current_time - tigrTimestamp) * timebaseInfo.numer / (timebaseInfo.denom * 1000000000.0);
+    tigrTimestamp = current_time;
     return (float)elapsed;
 }
 
