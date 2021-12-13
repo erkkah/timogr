@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.example.timogr'
+        applicationId 'timogr.demo'
         minSdk 26
         targetSdk 29
         externalNativeBuild {

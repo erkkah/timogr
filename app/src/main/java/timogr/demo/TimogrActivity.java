@@ -1,4 +1,4 @@
-package com.sedgelake.timogr;
+package timogr.demo;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -41,11 +41,9 @@ public class TimogrActivity extends android.app.NativeActivity {
                 Window window = getWindow();
                 if (show) {
                     imm.showSoftInput(focusView, InputMethodManager.SHOW_IMPLICIT);
-                    //window.setSoftInputMode(SOFT_INPUT_STATE_VISIBLE | SOFT_INPUT_ADJUST_NOTHING);
                 } else {
                     android.os.IBinder token = focusView.getWindowToken();
                     imm.hideSoftInputFromWindow(token, 0);
-                    //window.setSoftInputMode(SOFT_INPUT_STATE_HIDDEN | SOFT_INPUT_ADJUST_NOTHING);    
                 }        
             }
         });
