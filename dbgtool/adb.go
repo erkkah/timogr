@@ -54,9 +54,9 @@ func LaunchEmulator(SDKRoot string, emulator string) error {
 	if err != nil {
 		return err
 	}
-	output, err := runCommand(emulatorPath, "-avd", emulator, "-dns-server", "8.8.8.8")
+	err = startCommand(emulatorPath, "-avd", emulator, "-dns-server", "8.8.8.8")
 	if err != nil {
-		return fmt.Errorf(string(output))
+		return fmt.Errorf("Failed to launch emulator: %w", err)
 	}
 	return nil
 }
@@ -252,4 +252,9 @@ func runCommand(command string, args ...string) (string, error) {
 	var output []byte
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+func startCommand(command string, args ...string) error {
+	cmd := exec.Command(command, args...)
+	return cmd.Start()
 }
