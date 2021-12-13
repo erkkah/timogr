@@ -25,6 +25,11 @@ type Options struct {
 	Debug        bool
 }
 
+func usage() {
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [devices|emulators|emulator <id>|stop] [options]\n", os.Args[0])
+	flag.PrintDefaults()
+}
+
 func parseOptions() Options {
 	var options Options
 
@@ -36,6 +41,7 @@ func parseOptions() Options {
 	flag.StringVar(&options.Device, "device", "", "Device identifier")
 	flag.BoolVar(&options.Build, "build", false, "Build before debug")
 	flag.BoolVar(&options.Debug, "debug", true, "Start debug session")
+	flag.Usage = usage
 	flag.Parse()
 
 	if options.SDKRoot == "" {
@@ -83,7 +89,8 @@ func main() {
 
 	stopOnly := false
 
-	if flag.Arg(0) == "devices" {
+	switch flag.Arg(0) {
+	case "devices":
 		if len(devices) == 0 {
 			fatal("No devices found")
 		}
@@ -92,7 +99,7 @@ func main() {
 			fmt.Printf("%v\n", id)
 		}
 		os.Exit(0)
-	} else if flag.Arg(0) == "emulators" {
+	case "emulators":
 		emulators, err := ListEmulators(options.SDKRoot)
 		if err != nil {
 			fatal("Failed to list emulators")
@@ -103,7 +110,7 @@ func main() {
 			}
 		}
 		os.Exit(0)
-	} else if flag.Arg(0) == "emulator" {
+	case "emulator":
 		emulator := flag.Arg(1)
 		if emulator == "" {
 			emulators, err := ListEmulators(options.SDKRoot)
@@ -120,8 +127,14 @@ func main() {
 			fatal(fmt.Sprintf("Failed to launch emulator (output from emulator tool):\n%v", err))
 		}
 		os.Exit(0)
-	} else if flag.Arg(0) == "stop" {
+	case "stop":
 		stopOnly = true
+		break
+	case "":
+		break
+	default:
+		usage()
+		os.Exit(1)
 	}
 
 	if len(devices) == 0 {
