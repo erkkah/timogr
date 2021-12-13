@@ -26,7 +26,7 @@ type Options struct {
 }
 
 func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [devices|emulators|emulator <id>|stop] [options]\n", os.Args[0])
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s <devices|emulators|emulator <id>|start|stop> [options]\nOptions:\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -61,36 +61,14 @@ func parseOptions() Options {
 func main() {
 	options := parseOptions()
 
-	if options.Build {
-		err := buildAndInstall()
-		if err != nil {
-			fatal(fmt.Sprintf("Build failed: %v", err))
-		}
-	}
-
-	manifest, err := parseManifest(options.Manifest)
-	if err != nil {
-		fatal("Failed to parse manifest")
-	}
-	if options.Package == "" {
-		options.Package, err = getApplicationID()
-		if err != nil {
-			fatal("Failed to get package using gradle")
-		}
-	}
-	if options.Package == "" {
-		fatal("Application package not specified")
-	}
-
-	devices, err := ListDevices()
-	if err != nil {
-		fatal("Failed to list devices")
-	}
-
 	stopOnly := false
 
 	switch flag.Arg(0) {
 	case "devices":
+		devices, err := ListDevices()
+		if err != nil {
+			fatal("Failed to list devices")
+		}
 		if len(devices) == 0 {
 			fatal("No devices found")
 		}
@@ -130,11 +108,37 @@ func main() {
 	case "stop":
 		stopOnly = true
 		break
-	case "":
+	case "start":
 		break
 	default:
 		usage()
 		os.Exit(1)
+	}
+
+	if options.Build {
+		err := buildAndInstall()
+		if err != nil {
+			fatal(fmt.Sprintf("Build failed: %v", err))
+		}
+	}
+
+	manifest, err := parseManifest(options.Manifest)
+	if err != nil {
+		fatal("Failed to parse manifest")
+	}
+	if options.Package == "" {
+		options.Package, err = getApplicationID()
+		if err != nil {
+			fatal("Failed to get package using gradle")
+		}
+	}
+	if options.Package == "" {
+		fatal("Application package not specified")
+	}
+
+	devices, err := ListDevices()
+	if err != nil {
+		fatal("Failed to list devices")
 	}
 
 	if len(devices) == 0 {
