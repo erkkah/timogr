@@ -26,7 +26,7 @@ type Options struct {
 }
 
 func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s <devices|emulators|emulator <id>|start|stop> [options]\nOptions:\n", os.Args[0])
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <devices|emulators|emulator <id>|start|stop>\nOptions:\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -116,6 +116,7 @@ func main() {
 	}
 
 	if options.Build {
+		fmt.Println("Building...")
 		err := buildAndInstall()
 		if err != nil {
 			fatal(fmt.Sprintf("Build failed: %v", err))
@@ -178,7 +179,7 @@ func main() {
 	}
 
 	fmt.Println("Starting application")
-	if err = adb.StartApplication(manifest.mainActivityIntent()); err != nil {
+	if err = adb.StartApplication(manifest.mainActivityIntent(), options.Debug); err != nil {
 		fatal(fmt.Sprintf("Failed to start application: %v", err))
 	}
 
