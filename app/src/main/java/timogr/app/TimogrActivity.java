@@ -1,4 +1,4 @@
-package timogr.demo;
+package timogr.app;
 
 import android.content.Context;
 import android.os.Bundle;
