@@ -1663,13 +1663,6 @@ int tigrTextHeight(TigrFont *font, const char *text)
 //#include "tigr_internal.h"
 #include <assert.h>
 
-#pragma comment(lib, "opengl32") // glViewport
-#pragma comment(lib, "shell32")  // CommandLineToArgvW
-#pragma comment(lib, "user32")   // SetWindowLong
-#pragma comment(lib, "gdi32")    // ChoosePixelFormat
-#pragma comment(lib, "advapi32") // RegSetValueEx
-
-
 // not really windows stuff
 TigrInternal *tigrInternal(Tigr *bmp)
 {
@@ -1684,6 +1677,12 @@ TigrInternal *tigrInternal(Tigr *bmp)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+
+#pragma comment(lib, "opengl32") // glViewport
+#pragma comment(lib, "shell32")  // CommandLineToArgvW
+#pragma comment(lib, "user32")   // SetWindowLong
+#pragma comment(lib, "gdi32")    // ChoosePixelFormat
+#pragma comment(lib, "advapi32") // RegSetValueEx
 
 #define WIDGET_SCALE	3
 #define WIDGET_FADE		16
@@ -3648,7 +3647,7 @@ BOOL hasText(id self, SEL _sel) {
     return NO;
 }
 
-void showKeyboard(int show) {
+void tigrShowKeyboard(int show) {
     int expected = show ? KBD_HIDDEN : KBD_SHOWN;
     int desired = show ? KBD_SHOWREQ : KBD_HIDEREQ;
     atomic_compare_exchange_weak(&gState.keyboardState, &expected, desired);
@@ -5010,7 +5009,7 @@ static int tigrKeyFromAndroidKey(int key) {
         case AKEYCODE_META_RIGHT:
             return TK_RWIN;
 
-        case AKEYCODE_BACK:
+        case AKEYCODE_DEL:
             return TK_BACKSPACE;
         case AKEYCODE_TAB:
             return TK_TAB;
@@ -5019,6 +5018,7 @@ static int tigrKeyFromAndroidKey(int key) {
         case AKEYCODE_CAPS_LOCK:
             return TK_CAPSLOCK;
         case AKEYCODE_ESCAPE:
+        case AKEYCODE_BACK:
             return TK_ESCAPE;
         case AKEYCODE_SPACE:
             return TK_SPACE;
@@ -5042,7 +5042,7 @@ static int tigrKeyFromAndroidKey(int key) {
         
         case AKEYCODE_INSERT:
             return TK_INSERT;
-        case AKEYCODE_DEL:
+        case AKEYCODE_FORWARD_DEL:
             return TK_DELETE;
         case AKEYCODE_NUM_LOCK:
             return TK_NUMLOCK;
