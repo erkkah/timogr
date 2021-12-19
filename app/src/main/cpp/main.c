@@ -38,6 +38,10 @@ void tigrMain() {
             tigrShowKeyboard(0);
         }
 
+        if (tigrKeyDown(screen, TK_ESCAPE)) {
+            break;
+        }
+
         tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
 
         int logoX = (screen->w - logo->w) / 2;
