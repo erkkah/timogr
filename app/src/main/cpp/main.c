@@ -30,6 +30,18 @@ void tigrMain() {
         tigrMouse(screen, &x, &y, &buttons);
         int numTouches = tigrTouch(screen, touchPoints, 3);
 
+        if (numTouches && y > screen->h - screen->h / 10) {
+            tigrShowKeyboard(1);
+        }
+
+        if (tigrKeyDown(screen, TK_RETURN)) {
+            tigrShowKeyboard(0);
+        }
+
+        if (tigrKeyDown(screen, TK_ESCAPE)) {
+            break;
+        }
+
         tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
 
         int logoX = (screen->w - logo->w) / 2;

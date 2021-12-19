@@ -46,7 +46,8 @@ void tigrMain()
 ## Some details and pointers
 
 ### Input
-* Since most Android devices are not used with physical keyboards, there is currently no keyboard support.
+* Keyboard input using the virtual keyboard is supported. Use `tigrShowKeyboard()` to show or hide the keyboard.
+* The "back" button produces a TK_ESCAPE keypress.
 * The "buttons" reported by `tigrMouse` is the number of detected touch points, the position is always of the last triggered touch point.
 * Use `tigrTouch` to process multi-touch input.
 

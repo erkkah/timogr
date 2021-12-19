@@ -126,10 +126,13 @@ typedef struct {
 	int pos[4];
 	int lastChar;
 	char keys[256], prev[256];
+	#if defined(__ANDROID__)
+	char released[256];
+	#endif // __ANDROID__
 	#if defined(__MACOS__)
 	int mouseInView;
 	int mouseButtons;
-	#endif
+	#endif // __MACOS__
 	#if defined(__linux__) || defined(__IOS__)
 	int mouseButtons;
 	int mouseX;
@@ -249,18 +252,18 @@ const int tigr_default_fx_gl_fs_size = (int)sizeof(tigr_default_fx_gl_fs) - 1;
 // Expands 0-255 into 0-256
 #define EXPAND(X) ((X) + ((X) > 0))
 
-#define CLIP0(X, X2, W) if (X < 0) { W += X; X2 -= X; X = 0; }
+#define CLIP0(CX, X, X2, W) if (X < CX) { int D = CX - X; W -= D; X2 += D; X += D; }
 #define CLIP1(X, DW, W) if (X + W > DW) W = DW - X;
 #define CLIP() \
-	CLIP0(dx, sx, w);		\
-	CLIP0(dy, sy, h);		\
-	CLIP0(sx, dx, w);		\
-	CLIP0(sy, dy, h);		\
-	CLIP1(dx, dst->w, w);	\
-	CLIP1(dy, dst->h, h);	\
-	CLIP1(sx, src->w, w);	\
-	CLIP1(sy, src->h, h);	\
-	if (w <= 0 || h <= 0)	\
+	CLIP0(dst->cx, dx, sx, w); \
+	CLIP0(dst->cy, dy, sy, h); \
+	CLIP0(0, sx, dx, w); \
+	CLIP0(0, sy, dy, h); \
+	CLIP1(dx, dst->cx + cw, w); \
+	CLIP1(dy, dst->cy + ch, h); \
+	CLIP1(sx, src->w, w); \
+	CLIP1(sy, src->h, h); \
+	if (w <= 0 || h <= 0) \
 		return
 
 
@@ -269,7 +272,10 @@ Tigr *tigrBitmap2(int w, int h, int extra)
 	Tigr *tigr = (Tigr *)calloc(1, sizeof(Tigr) + extra);
 	tigr->w = w;
 	tigr->h = h;
+	tigr->cw = -1;
+	tigr->ch = -1;
 	tigr->pix = (TPixel *)calloc(w*h, sizeof(TPixel));
+	tigr->blitMode = TIGR_BLEND_ALPHA;
 	return tigr;
 }
 
@@ -280,6 +286,10 @@ Tigr *tigrBitmap(int w, int h)
 
 void tigrResize(Tigr *bmp, int w, int h)
 {
+	if (bmp->w == w && bmp->h == h) {
+		return;
+	}
+
 	int y, cw, ch;
 	TPixel *newpix = (TPixel *)calloc(w*h, sizeof(TPixel));
 	cw = (w < bmp->w) ? w : bmp->w;
@@ -416,16 +426,25 @@ void tigrPlot(Tigr *bmp, int x, int y, TPixel pix)
 	}
 }
 
+void tigrClip(Tigr *bmp, int cx, int cy, int cw, int ch)
+{
+	bmp->cx = cx;
+	bmp->cy = cy;
+	bmp->cw = cw;
+	bmp->ch = ch;
+}
+
 void tigrBlit(Tigr *dst, Tigr *src, int dx, int dy, int sx, int sy, int w, int h)
 {
-	TPixel *td, *ts;
-	int st, dt;
+	int cw = dst->cw >= 0 ? dst->cw : dst->w;
+	int ch = dst->ch >= 0 ? dst->ch : dst->h;
+
 	CLIP();
 
-	ts = &src->pix[sy*src->w + sx];
-	td = &dst->pix[dy*dst->w + dx];
-	st = src->w;
-	dt = dst->w;
+	TPixel* ts = &src->pix[sy*src->w + sx];
+	TPixel* td = &dst->pix[dy*dst->w + dx];
+	int st = src->w;
+	int dt = dst->w;
 	do {
 		memcpy(td, ts, w*sizeof(TPixel));
 		ts += st;
@@ -435,21 +454,22 @@ void tigrBlit(Tigr *dst, Tigr *src, int dx, int dy, int sx, int sy, int w, int h
 
 void tigrBlitTint(Tigr *dst, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, TPixel tint)
 {
-	TPixel *td, *ts;
-	int x, st, dt, xr,xg,xb,xa;
+	int cw = dst->cw >= 0 ? dst->cw : dst->w;
+	int ch = dst->ch >= 0 ? dst->ch : dst->h;
+
 	CLIP();
 
-	xr = EXPAND(tint.r);
-	xg = EXPAND(tint.g);
-	xb = EXPAND(tint.b);
-	xa = EXPAND(tint.a);
+	int xr = EXPAND(tint.r);
+	int xg = EXPAND(tint.g);
+	int xb = EXPAND(tint.b);
+	int xa = EXPAND(tint.a);
 
-	ts = &src->pix[sy*src->w + sx];
-	td = &dst->pix[dy*dst->w + dx];
-	st = src->w;
-	dt = dst->w;
+	TPixel* ts = &src->pix[sy*src->w + sx];
+	TPixel* td = &dst->pix[dy*dst->w + dx];
+	int st = src->w;
+	int dt = dst->w;
 	do {
-		for (x=0;x<w;x++)
+		for (int x = 0; x < w; x++)
 		{
 			unsigned r = (xr * ts[x].r) >> 8;
 			unsigned g = (xg * ts[x].g) >> 8;
@@ -458,7 +478,7 @@ void tigrBlitTint(Tigr *dst, Tigr *src, int dx, int dy, int sx, int sy, int w, i
 			td[x].r += (unsigned char)((r - td[x].r)*a >> 16);
 			td[x].g += (unsigned char)((g - td[x].g)*a >> 16);
 			td[x].b += (unsigned char)((b - td[x].b)*a >> 16);
-			td[x].a += (unsigned char)((ts[x].a - td[x].a)*a >> 16);
+			td[x].a += (dst->blitMode) * (unsigned char)((ts[x].a - td[x].a)*a >> 16);
 		}
 		ts += st;
 		td += dt;
@@ -469,6 +489,10 @@ void tigrBlitAlpha(Tigr *dst, Tigr *src, int dx, int dy, int sx, int sy, int w, 
 {
 	alpha = (alpha < 0) ? 0 : (alpha > 1 ? 1 : alpha);
 	tigrBlitTint(dst, src, dx, dy, sx, sy, w, h, tigrRGBA(0xff,0xff,0xff,(unsigned char)(alpha*255)));
+}
+
+void tigrBlitMode(Tigr* dst, int mode) {
+	dst->blitMode = mode;
 }
 
 #undef CLIP0
@@ -1639,13 +1663,6 @@ int tigrTextHeight(TigrFont *font, const char *text)
 //#include "tigr_internal.h"
 #include <assert.h>
 
-#pragma comment(lib, "opengl32") // glViewport
-#pragma comment(lib, "shell32")  // CommandLineToArgvW
-#pragma comment(lib, "user32")   // SetWindowLong
-#pragma comment(lib, "gdi32")    // ChoosePixelFormat
-#pragma comment(lib, "advapi32") // RegSetValueEx
-
-
 // not really windows stuff
 TigrInternal *tigrInternal(Tigr *bmp)
 {
@@ -1660,6 +1677,12 @@ TigrInternal *tigrInternal(Tigr *bmp)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+
+#pragma comment(lib, "opengl32") // glViewport
+#pragma comment(lib, "shell32")  // CommandLineToArgvW
+#pragma comment(lib, "user32")   // SetWindowLong
+#pragma comment(lib, "gdi32")    // ChoosePixelFormat
+#pragma comment(lib, "advapi32") // RegSetValueEx
 
 #define WIDGET_SCALE	3
 #define WIDGET_FADE		16
@@ -1998,8 +2021,13 @@ LRESULT CALLBACK tigrWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 		return 0;
 	case WM_CHAR:
 		if (win) {
-			if (wParam == '\r') wParam = '\n';
+			if (wParam == '\r') {
+				wParam = '\n';
+			}
+			int repeating = (HIWORD(lParam) & KF_REPEAT) == KF_REPEAT;
+			if (!repeating) {
 				win->lastChar = wParam;
+			}
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
 	case WM_MENUCHAR:
@@ -2469,6 +2497,12 @@ extern id const NSDefaultRunLoopMode;
 
 bool terminated = false;
 
+static uint64_t tigrTimestamp = 0;
+
+void _tigrResetTime() {
+	tigrTimestamp = mach_absolute_time();
+}
+
 TigrInternal* _tigrInternalCocoa(id window) {
     if (!window)
         return NULL;
@@ -2491,6 +2525,22 @@ NSUInteger applicationShouldTerminate(id self, SEL _sel, id sender) {
 void windowWillClose(id self, SEL _sel, id notification) {
     NSUInteger value = true;
     object_setInstanceVariable(self, "closed", (void*)value);
+    object_setInstanceVariable(self, "tigrHandle", (void*)0);
+}
+
+void windowDidEnterFullScreen(id self, SEL _sel, id notification) {
+    NSUInteger value = true;
+    object_setInstanceVariable(self, "visible", (void*)value);
+}
+
+void windowDidResize(id self, SEL _sel, id notification) {
+    TigrInternal* win;
+    Tigr* bmp = 0;
+    object_getInstanceVariable(self, "tigrHandle", (void**)&bmp);
+    win = bmp ? tigrInternal(bmp) : NULL;
+    if (win) {
+        win->mouseButtons = 0;
+    }
 }
 
 void windowDidBecomeKey(id self, SEL _sel, id notification) {
@@ -2510,27 +2560,40 @@ void windowDidBecomeKey(id self, SEL _sel, id notification) {
 void mouseEntered(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
-    win->mouseInView = 1;
-    if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id(class("NSCursor"), sel("hide"));
+    if (win) {
+        win->mouseInView = 1;
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("hide"));
+        }
     }
 }
 
 void mouseExited(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
     TigrInternal* win = _tigrInternalCocoa(window);
-    win->mouseInView = 0;
-    if (win->flags & TIGR_NOCURSOR) {
-        objc_msgSend_id(class("NSCursor"), sel("unhide"));
+    if (win) {
+        win->mouseInView = 0;
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("unhide"));
+        }
     }
 }
 
-bool _tigrCocoaIsWindowClosed(id window) {
+bool _tigrIsWindowClosed(id window) {
     id wdg = objc_msgSend_id(window, sel("delegate"));
     if (!wdg)
         return false;
     NSUInteger value = 0;
     object_getInstanceVariable(wdg, "closed", (void**)&value);
+    return value ? true : false;
+}
+
+bool _tigrIsWindowVisible(id window) {
+    id wdg = objc_msgSend_id(window, sel("delegate"));
+    if (!wdg)
+        return false;
+    NSUInteger value = 0;
+    object_getInstanceVariable(wdg, "visible", (void**)&value);
     return value ? true : false;
 }
 
@@ -2618,23 +2681,20 @@ void tigrInitOSX() {
 }
 
 void tigrError(Tigr* bmp, const char* message, ...) {
-    char tmp[1024];
+	char tmp[1024];
 
-    va_list args;
-    va_start(args, message);
-    vsnprintf(tmp, sizeof(tmp), message, args);
-    tmp[sizeof(tmp) - 1] = 0;
-    va_end(args);
+	va_list args;
+	va_start(args, message);
+	vsnprintf(tmp, sizeof(tmp), message, args);
+	tmp[sizeof(tmp)-1] = 0;
+	va_end(args);
 
-    CFStringRef header = CFStringCreateWithCString(NULL, "Error", kCFStringEncodingUTF8);
-    CFStringRef msg = CFStringCreateWithCString(NULL, tmp, kCFStringEncodingUTF8);
-    CFUserNotificationDisplayNotice(0.0, kCFUserNotificationStopAlertLevel, NULL, NULL, NULL, header, msg, NULL);
-    CFRelease(header);
-    CFRelease(msg);
-    exit(1);
+	printf("tigr fatal error: %s\n", tmp);
+
+	exit(1);
 }
 
-NSSize _tigrCocoaWindowSize(id window) {
+NSSize _tigrContentBackingSize(id window) {
     id contentView = objc_msgSend_id(window, sel("contentView"));
     NSRect rect = objc_msgSend_stret_t(NSRect)(contentView, sel("frame"));
     rect = objc_msgSend_stret_t(NSRect, NSRect)(contentView, sel("convertRectToBacking:"), rect);
@@ -2653,19 +2713,18 @@ enum {
 };
 
 Tigr* tigrWindow(int w, int h, const char* title, int flags) {
-    int scale;
     Tigr* bmp;
     TigrInternal* win;
 
     tigrInitOSX();
 
-    NSUInteger windowStyleMask = NSWindowStyleRegular;
+    NSUInteger windowStyleMask = NSWindowStyleRegular & ~NSWindowStyleMaskMiniaturizable;
 
-    if (flags & TIGR_AUTO) {
-        // Always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
-        scale = 1;
-    } else {
-        // See how big we can make it and still fit on-screen.
+    // In AUTO mode, window follows requested size, unless downscaled by tigrEnforceScale below.
+    int windowScale = 1;
+    
+    // In non-AUTO mode, see how big we can make it and still fit on-screen.
+    if ((flags & TIGR_AUTO) == 0) {
         CGRect mainMonitor = CGDisplayBounds(CGMainDisplayID());
         int maxW = CGRectGetWidth(mainMonitor);
         int maxH = CGRectGetHeight(mainMonitor);
@@ -2674,26 +2733,26 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
             class("NSWindow"), sel("contentRectForFrameRect:styleMask:"),
             screen, windowStyleMask
         );
-        scale = tigrCalcScale(w, h, content.size.width, content.size.height);
+        windowScale = tigrCalcScale(w, h, content.size.width, content.size.height);
     }
 
-    scale = tigrEnforceScale(scale, flags);
+    windowScale = tigrEnforceScale(windowScale, flags);
 
-    NSRect rect = { { 0, 0 }, { w * scale, h * scale } };
+    NSRect rect = { { 0, 0 }, { w * windowScale, h * windowScale } };
     id windowAlloc = objc_msgSend_id(class("NSWindow"), sel("alloc"));
     id window = ((id(*)(id, SEL, NSRect, NSUInteger, NSUInteger, BOOL))objc_msgSend)(
         windowAlloc, sel("initWithContentRect:styleMask:backing:defer:"), rect, windowStyleMask, 2, NO);
 
-    if (flags & TIGR_FULLSCREEN) {
-        objc_msgSend_void_id(window, sel("toggleFullScreen:"), window);
-    }
 
     objc_msgSend_void_bool(window, sel("setReleasedWhenClosed:"), NO);
 
     Class WindowDelegateClass = objc_allocateClassPair((Class)objc_getClass("NSObject"), "WindowDelegate", 0);
     addIvar(WindowDelegateClass, "closed", sizeof(NSUInteger), NSUIntegerEncoding);
+    addIvar(WindowDelegateClass, "visible", sizeof(NSUInteger), NSUIntegerEncoding);
     addIvar(WindowDelegateClass, "tigrHandle", sizeof(void*), "ˆv");
     addMethod(WindowDelegateClass, "windowWillClose:", windowWillClose, "v@:@");
+    addMethod(WindowDelegateClass, "windowDidEnterFullScreen:", windowDidEnterFullScreen, "v@:@");
+    addMethod(WindowDelegateClass, "windowDidResize:", windowDidResize, "v@:@");
     addMethod(WindowDelegateClass, "windowDidBecomeKey:", windowDidBecomeKey, "v@:@");
     addMethod(WindowDelegateClass, "mouseEntered:", mouseEntered, "v@:@");
     addMethod(WindowDelegateClass, "mouseExited:", mouseExited, "v@:@");
@@ -2701,12 +2760,22 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel("alloc"));
     id wdg = objc_msgSend_id(wdgAlloc, sel("init"));
 
+    if (flags & TIGR_FULLSCREEN) {
+        objc_msgSend_void_id(window, sel("toggleFullScreen:"), window);
+        if (flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("hide"));
+        }
+    } else {
+        NSUInteger value = true;
+        object_setInstanceVariable(wdg, "visible", (void*)value);
+    }
+
     objc_msgSend_void_id(window, sel("setDelegate:"), wdg);
 
     id contentView = objc_msgSend_id(window, sel("contentView"));
 
-    if (flags & TIGR_RETINA)
-        objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), YES);
+	int wantsHighRes = (flags & TIGR_RETINA);
+    objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), wantsHighRes);
 
     NSPoint point = { 20, 20 };
     ((void (*)(id, SEL, NSPoint))objc_msgSend)(window, sel("cascadeTopLeftFromPoint:"), point);
@@ -2722,7 +2791,8 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
                                 // 72,			//	NSOpenGLPFANoRecovery,
                                 // 55, 1,		//	NSOpenGLPFASampleBuffers, 1,
                                 // 56, 4,		//	NSOpenGLPFASamples, 4,
-                                99, 0x3200,  //	NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+                                99, 0x3200,     //	NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+                                // 70, 0x00020400, // NSOpenGLPFARendererID, kCGLRendererGenericFloatID
                                 0 };
 
     id pixelFormat = objc_alloc("NSOpenGLPixelFormat");
@@ -2741,13 +2811,26 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     id blackColor = objc_msgSend_id(class("NSColor"), sel("blackColor"));
     objc_msgSend_void_id(window, sel("setBackgroundColor:"), blackColor);
 
-    // TODO do we really need this?
     objc_msgSend_void_bool(NSApp, sel("activateIgnoringOtherApps:"), YES);
 
     // Wrap a bitmap around it.
-    NSSize windowSize = _tigrCocoaWindowSize(window);
     bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
     bmp->handle = window;
+
+    NSSize windowContentSize = _tigrContentBackingSize(window);
+
+    // In AUTO mode, always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
+    int bitmapScale = 1;
+    
+    // In non-AUTO mode, scale based on backing size
+    if ((flags & TIGR_AUTO) == 0) {
+        bitmapScale = tigrEnforceScale(tigrCalcScale(w, h, windowContentSize.width, windowContentSize.height), flags); 
+    } else {
+        // In AUTO mode, bitmap size follows window size
+        w = windowContentSize.width / windowScale;
+        h = windowContentSize.height / windowScale;
+        bitmapScale = tigrEnforceScale(bitmapScale, flags);
+    }
 
     // Set the handle
     object_setInstanceVariable(wdg, "tigrHandle", (void*)bmp);
@@ -2770,7 +2853,7 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win = tigrInternal(bmp);
     win->shown = 0;
     win->closed = 0;
-    win->scale = scale;
+    win->scale = bitmapScale;
     win->lastChar = 0;
     win->flags = flags;
 	win->p1 = win->p2 = win->p3 = 0;
@@ -2799,8 +2882,12 @@ void tigrFree(Tigr* bmp) {
 
         id window = (id)bmp->handle;
 
-        if (!_tigrCocoaIsWindowClosed(window) && !terminated) {
+        if (!_tigrIsWindowClosed(window) && !terminated) {
             objc_msgSend_void(window, sel("close"));
+        }
+
+        if (win->flags & TIGR_NOCURSOR) {
+            objc_msgSend_id(class("NSCursor"), sel("unhide"));
         }
 
         id wdg = objc_msgSend_id(window, sel("delegate"));
@@ -3219,13 +3306,21 @@ void _tigrOnCocoaEvent(id event, id window) {
         }
         case 10:  // NSKeyDown
         {
-            id inputText = objc_msgSend_id(event, sel("characters"));
-            const char* inputTextUTF8 = objc_msgSend_t(const char*)(inputText, sel("UTF8String"));
-
-            tigrDecodeUTF8(inputTextUTF8, &win->lastChar);
-
             uint16_t keyCode = objc_msgSend_t(unsigned short)(event, sel("keyCode"));
-            win->keys[_tigrKeyFromOSX(keyCode)] = 1;
+            int tigrKey = _tigrKeyFromOSX(keyCode);
+
+            // Ignore keyboard repeats
+            if (!win->keys[tigrKey]) {
+                win->keys[tigrKey] = 1;
+                id inputText = objc_msgSend_id(event, sel("characters"));
+                const char* inputTextUTF8 = objc_msgSend_t(const char*)(inputText, sel("UTF8String"));
+
+                int decoded = 0;
+                tigrDecodeUTF8(inputTextUTF8, &decoded);
+                if (decoded < 0xe000 || decoded > 0xf8ff) {
+                    win->lastChar = decoded;
+                }
+            }
 
             // Pass through cmd+key
             if (win->keys[TK_LWIN]) {
@@ -3257,7 +3352,7 @@ void tigrUpdate(Tigr* bmp) {
     window = (id)bmp->handle;
     openGLContext = (id)win->gl.glContext;
 
-    if (terminated || _tigrCocoaIsWindowClosed(window)) {
+    if (terminated || _tigrIsWindowClosed(window)) {
         return;
     }
 
@@ -3272,6 +3367,9 @@ void tigrUpdate(Tigr* bmp) {
 
     id distantPast = objc_msgSend_id(class("NSDate"), sel("distantPast"));
     id event = 0;
+    int processedEvents;
+    BOOL visible = 0;
+
     do {
         event = objc_msgSend_t(id, NSUInteger, id, id, BOOL)(
             NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), eventMask, distantPast,
@@ -3279,16 +3377,25 @@ void tigrUpdate(Tigr* bmp) {
         );
 
         if (event != 0) {
+            processedEvents++;
             _tigrOnCocoaEvent(event, window);
+        } else {
+            visible = _tigrIsWindowVisible(window);
         }
-    } while (event != 0);
+    } while (event != 0 || !visible);
+
+    if (processedEvents) {
+        // The event processing loop above is blocking, which causes timing to freeze.
+        // Reset the time here to hide that fact from client code.
+        _tigrResetTime();
+    }
 
     // do runloop stuff
     objc_msgSend_void(NSApp, sel("updateWindows"));
     objc_msgSend_void(openGLContext, sel("update"));
     tigrGAPIBegin(bmp);
 
-    NSSize windowSize = _tigrCocoaWindowSize(window);
+    NSSize windowSize = _tigrContentBackingSize(window);
 
     if (win->flags & TIGR_AUTO)
         tigrResize(bmp, windowSize.width / win->scale, windowSize.height / win->scale);
@@ -3314,7 +3421,7 @@ int tigrGAPIEnd(Tigr* bmp) {
 }
 
 int tigrClosed(Tigr* bmp) {
-    return (terminated || _tigrCocoaIsWindowClosed((id)bmp->handle)) ? 1 : 0;
+    return (terminated || _tigrIsWindowClosed((id)bmp->handle)) ? 1 : 0;
 }
 
 void tigrMouse(Tigr* bmp, int* x, int* y, int* buttons) {
@@ -3389,18 +3496,17 @@ int tigrReadChar(Tigr* bmp) {
 }
 
 float tigrTime() {
-    static uint64_t time = 0;
     static mach_timebase_info_data_t timebaseInfo;
 
     if (timebaseInfo.denom == 0) {
         mach_timebase_info(&timebaseInfo);
-        time = mach_absolute_time();
+        tigrTimestamp = mach_absolute_time();
         return 0.0f;
     }
 
     uint64_t current_time = mach_absolute_time();
-    double elapsed = (double)(current_time - time) * timebaseInfo.numer / (timebaseInfo.denom * 1000000000.0);
-    time = current_time;
+    double elapsed = (double)(current_time - tigrTimestamp) * timebaseInfo.numer / (timebaseInfo.denom * 1000000000.0);
+    tigrTimestamp = current_time;
     return (float)elapsed;
 }
 
@@ -3422,6 +3528,7 @@ float tigrTime() {
 #include <dispatch/dispatch.h>
 #include <os/log.h>
 #include <time.h>
+#include <stdatomic.h>
 
 id makeNSString(const char* str) {
     return objc_msgSend_t(id, const char*)
@@ -3445,43 +3552,60 @@ typedef struct {
     int numPoints;
 } InputState;
 
+typedef struct {
+    int keyCode;
+    int codePoint;
+} KeyEvent;
+
+enum {
+    KBD_HIDDEN = 0,
+    KBD_SHOWREQ,
+    KBD_HIDEREQ,
+    KBD_SHOWN,
+};
 
 /// Global state
 static struct {
     InputState inputState;
     id viewController;
+    id view;
     id context;
     id frameCondition;
     int screenW;
     int screenH;
     double scaleFactor;
     double timeSinceLastDraw;
-    int closed;
     int renderReadFd;
     int mainWriteFd;
+    _Atomic(int) keyboardState;
 } gState = {
     .inputState = {
         .numPoints = 0,
     },
     .viewController = 0,
+    .view = 0,
     .context = 0,
     .frameCondition = 0,
     .screenW = 0,
     .screenH = 0,
     .scaleFactor = 1,
     .timeSinceLastDraw = 0,
-    .closed = 0,
     .renderReadFd = 0,
     .mainWriteFd = 0,
+    .keyboardState = ATOMIC_VAR_INIT(KBD_HIDDEN),
 };
 
 typedef enum {
-    SET_INPUT
+    SET_INPUT,
+    KEY_EVENT,
 } TigrMessage;
 
 typedef struct TigrMessageData {
     TigrMessage message;
-    InputState inputState;
+    union {
+        InputState inputState;
+        KeyEvent keyEvent;
+    };
 } TigrMessageData;
 
 static id autoreleasePool = NULL;
@@ -3516,7 +3640,60 @@ void viewWillTransitionToSize(id self, SEL _sel, CGSize size, id transitionCoord
 }
 
 BOOL prefersStatusBarHidden(id self, SEL _sel) {
-    return true;
+    return YES;
+}
+
+BOOL hasText(id self, SEL _sel) {
+    return NO;
+}
+
+void tigrShowKeyboard(int show) {
+    int expected = show ? KBD_HIDDEN : KBD_SHOWN;
+    int desired = show ? KBD_SHOWREQ : KBD_HIDEREQ;
+    atomic_compare_exchange_weak(&gState.keyboardState, &expected, desired);
+}
+
+void insertText(id self, SEL _sel, id text) {
+    const char* inserted = UTF8StringFromNSString(text);
+    int codePoint = 0;
+
+    do {
+		inserted = tigrDecodeUTF8(inserted, &codePoint);
+        if (codePoint != 0) {
+            KeyEvent event;
+            event.codePoint = codePoint;
+            event.keyCode = (codePoint < 128) ? codePoint : 0;
+
+            TigrMessageData message = {
+                .message = KEY_EVENT,
+                .keyEvent = event,
+            };
+            writeToRenderThread(&message);
+        }
+    } while (*inserted != 0);
+}
+
+void deleteBackward(id self, SEL _sel) {
+    KeyEvent event;
+    event.codePoint = 0;
+    event.keyCode = 8; // BS
+
+    TigrMessageData message = {
+        .message = KEY_EVENT,
+        .keyEvent = {
+            .codePoint = 0,
+            .keyCode = 8,
+        }
+    };
+    writeToRenderThread(&message);
+}
+
+BOOL canBecomeFirstResponder(id self, SEL _sel) {
+    return YES;
+}
+
+BOOL canResignFirstResponder(id self, SEL _sel) {
+    return YES;
 }
 
 enum RenderState {
@@ -3546,8 +3723,19 @@ BOOL didFinishLaunchingWithOptions(id self, SEL _sel, id application, id options
     context = objc_msgSend_t(id, int)(context, sel("initWithAPI:"), kEAGLRenderingAPIOpenGLES3);
     gState.context = context;
 
-    id view = objc_alloc("GLKView");
+    Class View = makeClass("TigrView", "GLKView");
+    addMethod(View, "insertText:", insertText, "v@:@");
+    addMethod(View, "deleteBackward", deleteBackward, "v@:");
+    addMethod(View, "hasText", hasText, "c@:");
+    addMethod(View, "canBecomeFirstResponder", canBecomeFirstResponder, "c@:");
+    addMethod(View, "canResignFirstResponder", canResignFirstResponder, "c@:");
+
+    Protocol* UIKeyInput = objc_getProtocol("UIKeyInput");
+    class_addProtocol(View, UIKeyInput);
+
+    id view = objc_msgSend_id((id)View, sel("alloc"));
     view = objc_msgSend_t(id, CGRect, id)(view, sel("initWithFrame:context:"), bounds, context);
+    gState.view = view;
     objc_msgSend_t(void, BOOL)(view, sel("setMultipleTouchEnabled:"), YES);
     objc_msgSend_t(void, id)(view, sel("setDelegate:"), self);
     objc_msgSend_t(void, id)(vc, sel("setView:"), view);
@@ -3578,11 +3766,24 @@ void waitForFrame() {
     objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
 }
 
+void processKeyboardRequest() {
+    int showReq = KBD_SHOWREQ;
+    int hideReq = KBD_HIDEREQ;
+
+    if (atomic_compare_exchange_weak(&gState.keyboardState, &showReq, KBD_SHOWN)) {
+        objc_msgSend_t(BOOL)(gState.view, sel("becomeFirstResponder"));
+    } else if (atomic_compare_exchange_weak(&gState.keyboardState, &hideReq, KBD_HIDDEN)) {
+        objc_msgSend_t(BOOL)(gState.view, sel("resignFirstResponder"));
+    }
+}
+
 void drawInRect(id _self, SEL _sel, id view, CGRect rect) {
     gState.timeSinceLastDraw = objc_msgSend_t(double)(gState.viewController, sel("timeSinceLastDraw"));
     objc_msgSend_t(void, int)(gState.frameCondition, sel("unlockWithCondition:"), SWAPPED);
     objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), RENDERED);
     objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
+
+    processKeyboardRequest();
 }
 
 extern void tigrMain();
@@ -3695,12 +3896,19 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 }
 
 void processEvents(TigrInternal* win) {
+    memset(win->keys, 0, 255);
+
     TigrMessageData data;
 
     while (readFromMainThread(&data)) {
         switch(data.message) {
             case SET_INPUT:
                 gState.inputState = data.inputState;
+                break;
+            case KEY_EVENT:
+                win->keys[data.keyEvent.keyCode] = 1;
+                win->lastChar = data.keyEvent.codePoint;
+                break;
         }
     }
 }
@@ -3802,6 +4010,24 @@ int tigrGAPIEnd(Tigr* bmp) {
     return 0;
 }
 
+int tigrKeyDown(Tigr* bmp, int key) {
+    TigrInternal* win;
+    assert(key < 256);
+    win = tigrInternal(bmp);
+    return win->keys[key];
+}
+
+int tigrKeyHeld(Tigr* bmp, int key) {
+    return tigrKeyDown(bmp, key);
+}
+
+int tigrReadChar(Tigr* bmp) {
+    TigrInternal* win = tigrInternal(bmp);
+    int c = win->lastChar;
+    win->lastChar = 0;
+    return c;
+}
+
 extern void* _tigrReadFile(const char* fileName, int* length);
 
 void* tigrReadFile(const char* fileName, int* length) {
@@ -3849,6 +4075,7 @@ extern "C" {
 extern int android_pollEvent(int (*eventHandler)(AndroidEvent, void*), void*);
 extern void android_swap(EGLDisplay display, EGLSurface surface);
 extern void* android_loadAsset(const char* filename, int* outLength);
+extern void android_showKeyboard(int show);
 
 /// Calls from Android to TIGR side, main thread
 void tigr_android_create();
@@ -4448,7 +4675,7 @@ int tigrTouch(Tigr *bmp, TigrTouchPoint* points, int maxPoints)
 {
 	int buttons = 0;
 	if (maxPoints > 0) {
-		tigrMouse(bmp, &points[0].x, &points[1].y, &buttons);
+		tigrMouse(bmp, &points->x, &points->y, &buttons);
 	}
 	return buttons ? 1 : 0;
 }
@@ -4628,7 +4855,228 @@ static void tearDownOpenGL() {
     }
 }
 
-static int processInputEvent(AInputEvent* event) {
+static int tigrKeyFromAndroidKey(int key) {
+    switch (key) {
+        case AKEYCODE_Q:
+            return 'Q';
+        case AKEYCODE_W:
+            return 'W';
+        case AKEYCODE_E:
+            return 'E';
+        case AKEYCODE_R:
+            return 'R';
+        case AKEYCODE_T:
+            return 'T';
+        case AKEYCODE_Y:
+            return 'Y';
+        case AKEYCODE_U:
+            return 'U';
+        case AKEYCODE_I:
+            return 'I';
+        case AKEYCODE_O:
+            return 'O';
+        case AKEYCODE_P:
+            return 'P';
+
+        case AKEYCODE_A:
+            return 'A';
+        case AKEYCODE_S:
+            return 'S';
+        case AKEYCODE_D:
+            return 'D';
+        case AKEYCODE_F:
+            return 'F';
+        case AKEYCODE_G:
+            return 'G';
+        case AKEYCODE_H:
+            return 'H';
+        case AKEYCODE_J:
+            return 'J';
+        case AKEYCODE_K:
+            return 'K';
+        case AKEYCODE_L:
+            return 'L';
+
+        case AKEYCODE_Z:
+            return 'Z';
+        case AKEYCODE_X:
+            return 'X';
+        case AKEYCODE_C:
+            return 'C';
+        case AKEYCODE_V:
+            return 'V';
+        case AKEYCODE_B:
+            return 'B';
+        case AKEYCODE_N:
+            return 'N';
+        case AKEYCODE_M:
+            return 'M';
+
+        case AKEYCODE_0:
+            return '0';
+        case AKEYCODE_1:
+            return '1';
+        case AKEYCODE_2:
+            return '2';
+        case AKEYCODE_3:
+            return '3';
+        case AKEYCODE_4:
+            return '4';
+        case AKEYCODE_5:
+            return '5';
+        case AKEYCODE_6:
+            return '6';
+        case AKEYCODE_7:
+            return '7';
+        case AKEYCODE_8:
+            return '8';
+        case AKEYCODE_9:
+            return '9';
+
+        case AKEYCODE_NUMPAD_0:
+            return TK_PAD0;
+        case AKEYCODE_NUMPAD_1:
+            return TK_PAD1;
+        case AKEYCODE_NUMPAD_2:
+            return TK_PAD2;
+        case AKEYCODE_NUMPAD_3:
+            return TK_PAD3;
+        case AKEYCODE_NUMPAD_4:
+            return TK_PAD4;
+        case AKEYCODE_NUMPAD_5:
+            return TK_PAD5;
+        case AKEYCODE_NUMPAD_6:
+            return TK_PAD6;
+        case AKEYCODE_NUMPAD_7:
+            return TK_PAD7;
+        case AKEYCODE_NUMPAD_8:
+            return TK_PAD8;
+        case AKEYCODE_NUMPAD_9:
+            return TK_PAD9;
+
+        case AKEYCODE_NUMPAD_MULTIPLY:
+            return TK_PADMUL;
+        case AKEYCODE_NUMPAD_DIVIDE:
+            return TK_PADDIV;
+        case AKEYCODE_NUMPAD_ADD:
+            return TK_PADADD;
+        case AKEYCODE_NUMPAD_SUBTRACT:
+            return TK_PADSUB;
+        case AKEYCODE_NUMPAD_ENTER:
+            return TK_PADENTER;
+        case AKEYCODE_NUMPAD_DOT:
+            return TK_PADDOT;
+
+        case AKEYCODE_F1:
+            return TK_F1;
+        case AKEYCODE_F2:
+            return TK_F2;
+        case AKEYCODE_F3:
+            return TK_F3;
+        case AKEYCODE_F4:
+            return TK_F4;
+        case AKEYCODE_F5:
+            return TK_F5;
+        case AKEYCODE_F6:
+            return TK_F6;
+        case AKEYCODE_F7:
+            return TK_F7;
+        case AKEYCODE_F8:
+            return TK_F8;
+        case AKEYCODE_F9:
+            return TK_F9;
+        case AKEYCODE_F10:
+            return TK_F10;
+        case AKEYCODE_F11:
+            return TK_F11;
+        case AKEYCODE_F12:
+            return TK_F12;
+
+        case AKEYCODE_SHIFT_LEFT:
+            return TK_LSHIFT;
+        case AKEYCODE_SHIFT_RIGHT:
+            return TK_RSHIFT;
+        case AKEYCODE_CTRL_LEFT:
+            return TK_LCONTROL;
+        case AKEYCODE_CTRL_RIGHT:
+            return TK_RCONTROL;
+        case AKEYCODE_ALT_LEFT:
+            return TK_LALT;
+        case AKEYCODE_ALT_RIGHT:
+            return TK_RALT;
+        case AKEYCODE_META_LEFT:
+            return TK_LWIN;
+        case AKEYCODE_META_RIGHT:
+            return TK_RWIN;
+
+        case AKEYCODE_DEL:
+            return TK_BACKSPACE;
+        case AKEYCODE_TAB:
+            return TK_TAB;
+        case AKEYCODE_ENTER:
+            return TK_RETURN;
+        case AKEYCODE_CAPS_LOCK:
+            return TK_CAPSLOCK;
+        case AKEYCODE_ESCAPE:
+        case AKEYCODE_BACK:
+            return TK_ESCAPE;
+        case AKEYCODE_SPACE:
+            return TK_SPACE;
+        
+        case AKEYCODE_PAGE_UP:
+            return TK_PAGEUP;
+        case AKEYCODE_PAGE_DOWN:
+            return TK_PAGEDN;
+        case AKEYCODE_MOVE_END:
+            return TK_END;
+        case AKEYCODE_MOVE_HOME:
+            return TK_HOME;
+        case AKEYCODE_DPAD_LEFT:
+            return TK_LEFT;
+        case AKEYCODE_DPAD_RIGHT:
+            return TK_RIGHT;
+        case AKEYCODE_DPAD_UP:
+            return TK_UP;
+        case AKEYCODE_DPAD_DOWN:
+            return TK_DOWN;
+        
+        case AKEYCODE_INSERT:
+            return TK_INSERT;
+        case AKEYCODE_FORWARD_DEL:
+            return TK_DELETE;
+        case AKEYCODE_NUM_LOCK:
+            return TK_NUMLOCK;
+        case AKEYCODE_SCROLL_LOCK:
+            return TK_SCROLL;
+        
+        case AKEYCODE_SEMICOLON:
+            return TK_SEMICOLON;
+        case AKEYCODE_EQUALS:
+            return TK_EQUALS;
+        case AKEYCODE_COMMA:
+            return TK_COMMA;
+        case AKEYCODE_MINUS:
+            return TK_MINUS;
+        case AKEYCODE_PERIOD:
+            return TK_DOT;
+        case AKEYCODE_SLASH:
+            return TK_SLASH;
+        case AKEYCODE_BACKSLASH:
+            return TK_BACKSLASH;
+        case AKEYCODE_GRAVE:
+            return TK_BACKTICK;
+        case AKEYCODE_APOSTROPHE:
+            return TK_TICK;
+        case AKEYCODE_LEFT_BRACKET:
+            return TK_LSQUARE;
+        case AKEYCODE_RIGHT_BRACKET:
+            return TK_RSQUARE;
+        
+        default: return 0;
+    }
+}
+
+static int processInputEvent(AInputEvent* event, TigrInternal* win) {
     if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
         int32_t action = AMotionEvent_getAction(event);
         int32_t actionCode = action & AMOTION_EVENT_ACTION_MASK;
@@ -4656,6 +5104,28 @@ static int processInputEvent(AInputEvent* event) {
             gState.inputState.numPoints = targetPointCount;
         }
         return 1;
+    } else if(AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY) {
+        if (!win) {
+            return 1;
+        }
+        int32_t deviceID = AInputEvent_getDeviceId(event);
+        // KeyCharacterMap#VIRTUAL_KEYBOARD == -1
+        if (deviceID != -1) {
+            return 1;
+        }
+        int32_t action = AKeyEvent_getAction(event);
+        int32_t keyCode = AKeyEvent_getKeyCode(event);
+        int key = tigrKeyFromAndroidKey(keyCode);
+        // We pass the character in the scancode field from the Java side
+        int32_t unicodeChar = AKeyEvent_getScanCode(event);
+
+        if (action == AKEY_EVENT_ACTION_DOWN) {
+            win->keys[key] = 1;
+            win->lastChar = unicodeChar;
+        } else if (action == AKEY_EVENT_ACTION_UP) {
+            win->released[key] = 1;
+        }
+        return 1;
     }
     return 0;
 }
@@ -4673,7 +5143,7 @@ static int handleEvent(AndroidEvent event, void* userData) {
             break;
 
         case AE_INPUT:
-            return processInputEvent(event.inputEvent);
+            return processInputEvent(event.inputEvent, (TigrInternal*) userData);
 
         case AE_RESUME:
             gState.lastTime = event.time;
@@ -4691,12 +5161,12 @@ static int handleEvent(AndroidEvent event, void* userData) {
     return 1;
 }
 
-static int processEvents() {
+static int processEvents(TigrInternal* win) {
     if (gState.closed) {
         return 0;
     }
 
-    while (android_pollEvent(handleEvent, 0)) {
+    while (android_pollEvent(handleEvent, win)) {
         if (gState.closed) {
             return 0;
         }
@@ -4735,7 +5205,7 @@ static Tigr* refreshWindow(Tigr* bmp) {
 
 Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     while (gState.window == NULL) {
-        if (!processEvents()) {
+        if (!processEvents(0)) {
             return NULL;
         }
     }
@@ -4772,6 +5242,10 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win->widgetsScale = 0;
     win->widgets = 0;
     win->gl.gl_legacy = 0;
+
+    memset(win->keys, 0, 256);
+    memset(win->prev, 0, 256);
+    memset(win->released, 0, 256);
 
     tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
 
@@ -4845,11 +5319,17 @@ static int toWindowY(TigrInternal* win, int y) {
 void tigrUpdate(Tigr* bmp) {
     TigrInternal* win = tigrInternal(bmp);
     memcpy(win->prev, win->keys, 256);
+    for (int i = 0; i < 256; i++) {
+        win->keys[i] ^= win->released[i];
+        win->released[i] = 0;
+    }
 
-    if (!processEvents()) {
+    if (!processEvents(win)) {
         win->closed = 1;
         return;
     }
+
+    tigrUpdateModifiers(win);
 
     if (gState.window == 0) {
         return;
@@ -5528,9 +6008,11 @@ int tigrBeginOpenGL(Tigr* bmp) {
 
 void tigrSetPostShader(Tigr *bmp, const char* code, int size) {
 #ifdef TIGR_GAPI_GL
+    tigrGAPIBegin(bmp);
     TigrInternal* win = tigrInternal(bmp);
     GLStuff *gl= &win->gl;
     tigrCreateShaderProgram(gl, code, size);
+    tigrGAPIEnd(bmp);
 #endif
 }
 

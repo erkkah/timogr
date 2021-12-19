@@ -1,13 +1,6 @@
 #include "tigr_internal.h"
 #include <assert.h>
 
-#pragma comment(lib, "opengl32") // glViewport
-#pragma comment(lib, "shell32")  // CommandLineToArgvW
-#pragma comment(lib, "user32")   // SetWindowLong
-#pragma comment(lib, "gdi32")    // ChoosePixelFormat
-#pragma comment(lib, "advapi32") // RegSetValueEx
-
-
 // not really windows stuff
 TigrInternal *tigrInternal(Tigr *bmp)
 {
@@ -22,6 +15,12 @@ TigrInternal *tigrInternal(Tigr *bmp)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+
+#pragma comment(lib, "opengl32") // glViewport
+#pragma comment(lib, "shell32")  // CommandLineToArgvW
+#pragma comment(lib, "user32")   // SetWindowLong
+#pragma comment(lib, "gdi32")    // ChoosePixelFormat
+#pragma comment(lib, "advapi32") // RegSetValueEx
 
 #define WIDGET_SCALE	3
 #define WIDGET_FADE		16
@@ -360,8 +359,13 @@ LRESULT CALLBACK tigrWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 		return 0;
 	case WM_CHAR:
 		if (win) {
-			if (wParam == '\r') wParam = '\n';
+			if (wParam == '\r') {
+				wParam = '\n';
+			}
+			int repeating = (HIWORD(lParam) & KF_REPEAT) == KF_REPEAT;
+			if (!repeating) {
 				win->lastChar = wParam;
+			}
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
 	case WM_MENUCHAR:

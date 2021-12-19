@@ -10,6 +10,7 @@
 #include <dispatch/dispatch.h>
 #include <os/log.h>
 #include <time.h>
+#include <stdatomic.h>
 
 id makeNSString(const char* str) {
     return objc_msgSend_t(id, const char*)
@@ -33,43 +34,60 @@ typedef struct {
     int numPoints;
 } InputState;
 
+typedef struct {
+    int keyCode;
+    int codePoint;
+} KeyEvent;
+
+enum {
+    KBD_HIDDEN = 0,
+    KBD_SHOWREQ,
+    KBD_HIDEREQ,
+    KBD_SHOWN,
+};
 
 /// Global state
 static struct {
     InputState inputState;
     id viewController;
+    id view;
     id context;
     id frameCondition;
     int screenW;
     int screenH;
     double scaleFactor;
     double timeSinceLastDraw;
-    int closed;
     int renderReadFd;
     int mainWriteFd;
+    _Atomic(int) keyboardState;
 } gState = {
     .inputState = {
         .numPoints = 0,
     },
     .viewController = 0,
+    .view = 0,
     .context = 0,
     .frameCondition = 0,
     .screenW = 0,
     .screenH = 0,
     .scaleFactor = 1,
     .timeSinceLastDraw = 0,
-    .closed = 0,
     .renderReadFd = 0,
     .mainWriteFd = 0,
+    .keyboardState = ATOMIC_VAR_INIT(KBD_HIDDEN),
 };
 
 typedef enum {
-    SET_INPUT
+    SET_INPUT,
+    KEY_EVENT,
 } TigrMessage;
 
 typedef struct TigrMessageData {
     TigrMessage message;
-    InputState inputState;
+    union {
+        InputState inputState;
+        KeyEvent keyEvent;
+    };
 } TigrMessageData;
 
 static id autoreleasePool = NULL;
@@ -104,7 +122,60 @@ void viewWillTransitionToSize(id self, SEL _sel, CGSize size, id transitionCoord
 }
 
 BOOL prefersStatusBarHidden(id self, SEL _sel) {
-    return true;
+    return YES;
+}
+
+BOOL hasText(id self, SEL _sel) {
+    return NO;
+}
+
+void tigrShowKeyboard(int show) {
+    int expected = show ? KBD_HIDDEN : KBD_SHOWN;
+    int desired = show ? KBD_SHOWREQ : KBD_HIDEREQ;
+    atomic_compare_exchange_weak(&gState.keyboardState, &expected, desired);
+}
+
+void insertText(id self, SEL _sel, id text) {
+    const char* inserted = UTF8StringFromNSString(text);
+    int codePoint = 0;
+
+    do {
+		inserted = tigrDecodeUTF8(inserted, &codePoint);
+        if (codePoint != 0) {
+            KeyEvent event;
+            event.codePoint = codePoint;
+            event.keyCode = (codePoint < 128) ? codePoint : 0;
+
+            TigrMessageData message = {
+                .message = KEY_EVENT,
+                .keyEvent = event,
+            };
+            writeToRenderThread(&message);
+        }
+    } while (*inserted != 0);
+}
+
+void deleteBackward(id self, SEL _sel) {
+    KeyEvent event;
+    event.codePoint = 0;
+    event.keyCode = 8; // BS
+
+    TigrMessageData message = {
+        .message = KEY_EVENT,
+        .keyEvent = {
+            .codePoint = 0,
+            .keyCode = 8,
+        }
+    };
+    writeToRenderThread(&message);
+}
+
+BOOL canBecomeFirstResponder(id self, SEL _sel) {
+    return YES;
+}
+
+BOOL canResignFirstResponder(id self, SEL _sel) {
+    return YES;
 }
 
 enum RenderState {
@@ -134,8 +205,19 @@ BOOL didFinishLaunchingWithOptions(id self, SEL _sel, id application, id options
     context = objc_msgSend_t(id, int)(context, sel("initWithAPI:"), kEAGLRenderingAPIOpenGLES3);
     gState.context = context;
 
-    id view = objc_alloc("GLKView");
+    Class View = makeClass("TigrView", "GLKView");
+    addMethod(View, "insertText:", insertText, "v@:@");
+    addMethod(View, "deleteBackward", deleteBackward, "v@:");
+    addMethod(View, "hasText", hasText, "c@:");
+    addMethod(View, "canBecomeFirstResponder", canBecomeFirstResponder, "c@:");
+    addMethod(View, "canResignFirstResponder", canResignFirstResponder, "c@:");
+
+    Protocol* UIKeyInput = objc_getProtocol("UIKeyInput");
+    class_addProtocol(View, UIKeyInput);
+
+    id view = objc_msgSend_id((id)View, sel("alloc"));
     view = objc_msgSend_t(id, CGRect, id)(view, sel("initWithFrame:context:"), bounds, context);
+    gState.view = view;
     objc_msgSend_t(void, BOOL)(view, sel("setMultipleTouchEnabled:"), YES);
     objc_msgSend_t(void, id)(view, sel("setDelegate:"), self);
     objc_msgSend_t(void, id)(vc, sel("setView:"), view);
@@ -166,11 +248,24 @@ void waitForFrame() {
     objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
 }
 
+void processKeyboardRequest() {
+    int showReq = KBD_SHOWREQ;
+    int hideReq = KBD_HIDEREQ;
+
+    if (atomic_compare_exchange_weak(&gState.keyboardState, &showReq, KBD_SHOWN)) {
+        objc_msgSend_t(BOOL)(gState.view, sel("becomeFirstResponder"));
+    } else if (atomic_compare_exchange_weak(&gState.keyboardState, &hideReq, KBD_HIDDEN)) {
+        objc_msgSend_t(BOOL)(gState.view, sel("resignFirstResponder"));
+    }
+}
+
 void drawInRect(id _self, SEL _sel, id view, CGRect rect) {
     gState.timeSinceLastDraw = objc_msgSend_t(double)(gState.viewController, sel("timeSinceLastDraw"));
     objc_msgSend_t(void, int)(gState.frameCondition, sel("unlockWithCondition:"), SWAPPED);
     objc_msgSend_t(void, int)(gState.frameCondition, sel("lockWhenCondition:"), RENDERED);
     objc_msgSend_t(void, id)(class("EAGLContext"), sel("setCurrentContext:"), gState.context);
+
+    processKeyboardRequest();
 }
 
 extern void tigrMain();
@@ -283,12 +378,19 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 }
 
 void processEvents(TigrInternal* win) {
+    memset(win->keys, 0, 255);
+
     TigrMessageData data;
 
     while (readFromMainThread(&data)) {
         switch(data.message) {
             case SET_INPUT:
                 gState.inputState = data.inputState;
+                break;
+            case KEY_EVENT:
+                win->keys[data.keyEvent.keyCode] = 1;
+                win->lastChar = data.keyEvent.codePoint;
+                break;
         }
     }
 }
@@ -388,6 +490,24 @@ int tigrGAPIBegin(Tigr* bmp) {
 int tigrGAPIEnd(Tigr* bmp) {
     (void)bmp;
     return 0;
+}
+
+int tigrKeyDown(Tigr* bmp, int key) {
+    TigrInternal* win;
+    assert(key < 256);
+    win = tigrInternal(bmp);
+    return win->keys[key];
+}
+
+int tigrKeyHeld(Tigr* bmp, int key) {
+    return tigrKeyDown(bmp, key);
+}
+
+int tigrReadChar(Tigr* bmp) {
+    TigrInternal* win = tigrInternal(bmp);
+    int c = win->lastChar;
+    win->lastChar = 0;
+    return c;
 }
 
 extern void* _tigrReadFile(const char* fileName, int* length);
