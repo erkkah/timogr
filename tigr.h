@@ -1,4 +1,4 @@
-// TIGR - TIny GRaphics Library - v2.4
+// TIGR - TIny GRaphics Library - v3.0
 //        ^^   ^^
 //
 // rawr.
@@ -106,24 +106,55 @@ void tigrSetPostFX(Tigr *bmp, float p1, float p2, float p3, float p4);
 
 // Drawing ----------------------------------------------------------------
 
-// Helper for reading/writing pixels.
+// Helper for reading pixels.
 // For high performance, just access bmp->pix directly.
 TPixel tigrGet(Tigr *bmp, int x, int y);
+
+// Plots a pixel.
+// Clips and blends.
+// For high performance, just access bmp->pix directly.
 void tigrPlot(Tigr *bmp, int x, int y, TPixel pix);
 
 // Clears a bitmap to a color.
+// No blending, no clipping.
 void tigrClear(Tigr *bmp, TPixel color);
 
-// Fills in a solid rectangle.
+// Fills a rectangular area.
+// No blending, no clipping.
 void tigrFill(Tigr *bmp, int x, int y, int w, int h, TPixel color);
 
-// Draws an empty rectangle. (exclusive co-ords)
-void tigrRect(Tigr *bmp, int x, int y, int w, int h, TPixel color);
-
 // Draws a line.
+// Start and end pixels are drawn.
+// Clips and blends.
 void tigrLine(Tigr *bmp, int x0, int y0, int x1, int y1, TPixel color);
 
-// Sets clip rect for blit operations.
+// Draws an empty rectangle.
+// Drawing a 1x1 rectangle yields the same result as calling tigrPlot.
+// Clips and blends.
+void tigrRect(Tigr *bmp, int x, int y, int w, int h, TPixel color);
+
+// Fills a rectangle.
+// Fills the inside of the specified rectangular area.
+// Calling tigrRect followed by tigrFillRect using the same arguments
+// causes no overdrawing.
+// Clips and blends.
+void tigrFillRect(Tigr *bmp, int x, int y, int w, int h, TPixel color);
+
+// Draws a circle.
+// Drawing a zero radius circle yields the same result as calling tigrPlot.
+// Drawing a circle with radius one draws a circle three pixels wide.
+// Clips and blends.
+void tigrCircle(Tigr *bmp, int x, int y, int r, TPixel color);
+
+// Fills a circle.
+// Fills the inside of the specified circle.
+// Calling tigrCircle followed by tigrFillCircle using the same arguments
+// causes no overdrawing.
+// Filling a circle with zero radius has no effect.
+// Clips and blends.
+void tigrFillCircle(Tigr *bmp, int x, int y, int r, TPixel color);
+
+// Sets clip rect.
 // Set to (0, 0, -1, -1) to reset clipping to full bitmap.
 void tigrClip(Tigr *bmp, int cx, int cy, int cw, int ch);
 
@@ -133,6 +164,7 @@ void tigrClip(Tigr *bmp, int cx, int cy, int cw, int ch);
 // w/h   = width/height
 //
 // RGBAdest = RGBAsrc
+// Clips, does not blend.
 void tigrBlit(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h);
 
 // Same as tigrBlit, but alpha blends the source bitmap with the
@@ -146,6 +178,7 @@ void tigrBlit(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int 
 //
 // Blit mode == TIGR_BLEND_ALPHA:
 // Adest = Asrc * Ablend + Adest * (1 - Ablend)
+// Clips and blends.
 void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, float alpha);
 
 // Same as tigrBlit, but tints the source bitmap with a color
@@ -163,6 +196,7 @@ void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w,
 //
 // Blit mode == TIGR_BLEND_ALPHA:
 // Adest = Ablend * Ablend + Adest * (1 - Ablend)
+// Clips and blends.
 void tigrBlitTint(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, TPixel tint);
 
 enum TIGRBlitMode {
