@@ -2,21 +2,24 @@ plugins {
     id 'com.android.application'
 }
 
-android {
-    compileSdk 29
-    ndkVersion '21.0.6113669'
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+android {
+    namespace 'timogr.app'
+    compileSdk 30
+    ndkVersion '21.0.6113669'
 
     defaultConfig {
         applicationId 'timogr.app'
         minSdk 26
-        targetSdk 29
+        targetSdk 33
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_STL=c++_static', '-std=c++17'
+                arguments '-DANDROID_STL=c++_static'
             }
         }
     }
