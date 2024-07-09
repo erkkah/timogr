@@ -18,8 +18,8 @@ keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 android {
     namespace 'timogr.app'
-    compileSdk 30
-    ndkVersion '21.0.6113669'
+    compileSdk 34
+    ndkVersion '27.0.11902837'
 
     defaultConfig {
         applicationId 'timogr.app'
@@ -27,7 +27,7 @@ android {
         targetSdk 33
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_STL=c++_static'
+                arguments '-DANDROID_STL=c++_shared'
             }
         }
         versionCode 2
@@ -46,6 +46,11 @@ android {
     }
     buildTypes {
         release {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -54,7 +59,7 @@ android {
         debug {
             externalNativeBuild {
                 cmake {
-                    cFlags '-g'
+                    arguments "-DCMAKE_BUILD_TYPE=Debug"
                 }
             }
             packagingOptions {
@@ -71,7 +76,7 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.games:games-frame-pacing:1.9.0'
+    implementation 'androidx.games:games-frame-pacing:2.1.0'
     implementation 'androidx.annotation:annotation:1.8.0'
 }
 
