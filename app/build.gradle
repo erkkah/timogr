@@ -8,6 +8,14 @@ java {
     }
 }
 
+tasks.withType(JavaCompile) {
+    options.deprecation = true
+}
+
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
 android {
     namespace 'timogr.app'
     compileSdk 30
@@ -22,6 +30,16 @@ android {
                 arguments '-DANDROID_STL=c++_static'
             }
         }
+        versionCode 2
+        versionName '1.0.1'
+    }
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+        }
     }
     buildFeatures {
         prefab true
@@ -31,6 +49,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
         debug {
             externalNativeBuild {
@@ -53,6 +72,7 @@ android {
 
 dependencies {
     implementation 'androidx.games:games-frame-pacing:1.9.0'
+    implementation 'androidx.annotation:annotation:1.8.0'
 }
 
 task printAppID {

@@ -17,3 +17,5 @@ local.properties
 
 .debug
 skrot
+keystore.properties
+timogr-release.jks
