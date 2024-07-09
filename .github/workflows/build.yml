@@ -11,8 +11,8 @@ jobs:
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
-        #os: [macos-11, ubuntu-latest, windows-latest]
-        os: [ubuntu-latest]
+        os: [macos-11, ubuntu-latest, windows-latest]
+        #os: [ubuntu-latest]
     steps:
     - name: Check out code
       uses: actions/checkout@v1
@@ -36,10 +36,10 @@ jobs:
       if: startsWith(matrix.os, 'macos')
       shell: bash
       working-directory: ./ci
-      run: ./ci
+      run: ./ci 1
 
     - name: Run tests (Windows)
       if: startsWith(matrix.os, 'windows')
       shell: bash
       working-directory: ./ci
-      run: ./ci.exe
+      run: ./ci.exe 0
