@@ -1,8 +1,10 @@
 package timogr.app;
 
+import androidx.annotation.Keep;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.SpannableStringBuilder;
 import android.util.AttributeSet;
@@ -29,12 +31,13 @@ import static android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN;
 public class TimogrActivity extends android.app.NativeActivity {
     private InputMethodManager imm = null;
     private View focusView;
-    private Handler handler = new Handler();
+    private Handler handler = new Handler(Looper.getMainLooper());
 
     public TimogrActivity() {
         super();
     }
 
+    @Keep
     public void showKeyboard(boolean show) {
         handler.post(new Runnable() {
             public void run() {
