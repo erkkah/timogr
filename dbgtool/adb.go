@@ -56,7 +56,7 @@ func LaunchEmulator(SDKRoot string, emulator string) error {
 	}
 	err = startCommand(emulatorPath, "-avd", emulator, "-dns-server", "8.8.8.8")
 	if err != nil {
-		return fmt.Errorf("Failed to launch emulator: %w", err)
+		return fmt.Errorf("failed to launch emulator: %w", err)
 	}
 	return nil
 }
@@ -122,7 +122,6 @@ func (adb *ADB) waitForPID() (string, error) {
 		}
 		select {
 		case <-time.After(time.Millisecond * 100):
-			break
 		case <-timeout:
 			return "", errors.New("Timeout")
 		}
