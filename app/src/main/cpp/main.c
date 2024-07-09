@@ -6,7 +6,7 @@
  * TIGR entry point.
  */
 void tigrMain() {
-    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_2X);
+    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_3X);
 
     int x;
     int y;
