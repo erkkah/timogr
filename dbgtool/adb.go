@@ -46,7 +46,13 @@ func ListEmulators(SDKRoot string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return strings.Split(output, "\n"), nil
+	lines := strings.Split(output, "\n")
+	// Hack!
+	// Skip lines containing space, to avoid including log lines
+	for len(lines) > 0 && strings.ContainsRune(lines[0], ' ') {
+		lines = lines[1:]
+	}
+	return lines, nil
 }
 
 func LaunchEmulator(SDKRoot string, emulator string) error {
