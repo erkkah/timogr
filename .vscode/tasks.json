@@ -37,6 +37,14 @@
             ]
         },
         {
+            "label": "timogr: launch emulator",
+            "type": "shell",
+            "command": "${workspaceFolder}/dbgtool/dbgtool",
+            "args": [
+                "emulator"
+            ]
+        },
+        {
             "label": "timogr: build tools",
             "type": "shell",
             "command": "go",
@@ -46,6 +54,6 @@
             "options": {
                 "cwd": "${workspaceFolder}/dbgtool"
             }
-        }
+        },
     ]
 }
