@@ -102,7 +102,7 @@ func main() {
 		}
 		err := LaunchEmulator(options.SDKRoot, emulator)
 		if err != nil {
-			fatal(fmt.Sprintf("Failed to launch emulator (output from emulator tool):\n%v", err))
+			fatal(fmt.Sprintf("Failed to launch emulator:\n%v", err))
 		}
 		os.Exit(0)
 	case "stop":

@@ -9,7 +9,7 @@
             "command": "${workspaceFolder}/dbgtool/dbgtool",
             "args": [
                 "-build",
-                "start",
+                "start"
             ],
             "isBackground": true,
             "problemMatcher": {
@@ -26,7 +26,9 @@
                     "endsPattern": "^(Ready for debugger.*)|(Failed.*)|(.*FAILED.*)|(.*FAILURE.*)"
                 }
             },
-            "dependsOn":["timogr: build tools"]
+            "dependsOn": [
+                "timogr: build tools"
+            ]
         },
         {
             "label": "timogr: stop",
@@ -34,14 +36,6 @@
             "command": "${workspaceFolder}/dbgtool/dbgtool",
             "args": [
                 "stop"
-            ]
-        },
-        {
-            "label": "timogr: launch emulator",
-            "type": "shell",
-            "command": "${workspaceFolder}/dbgtool/dbgtool",
-            "args": [
-                "emulator"
             ]
         },
         {
@@ -54,6 +48,6 @@
             "options": {
                 "cwd": "${workspaceFolder}/dbgtool"
             }
-        },
+        }
     ]
 }

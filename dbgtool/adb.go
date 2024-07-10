@@ -49,7 +49,7 @@ func ListEmulators(SDKRoot string) ([]string, error) {
 	lines := strings.Split(output, "\n")
 	// Hack!
 	// Skip lines containing space, to avoid including log lines
-	for len(lines) > 0 && strings.ContainsRune(lines[0], ' ') {
+	for len(lines) > 0 && (len(strings.TrimSpace(lines[0])) == 0 || strings.ContainsRune(lines[0], ' ')) {
 		lines = lines[1:]
 	}
 	return lines, nil
@@ -62,7 +62,7 @@ func LaunchEmulator(SDKRoot string, emulator string) error {
 	}
 	err = startCommand(emulatorPath, "-avd", emulator, "-dns-server", "8.8.8.8")
 	if err != nil {
-		return fmt.Errorf("failed to launch emulator: %w", err)
+		return err
 	}
 	return nil
 }
@@ -265,5 +265,9 @@ func runCommand(command string, args ...string) (string, error) {
 
 func startCommand(command string, args ...string) error {
 	cmd := exec.Command(command, args...)
-	return cmd.Start()
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }
