@@ -1,4 +1,6 @@
-// this one is based on https://github.com/jimon/osx_app_in_plain_c
+#ifndef TIGR_HEADLESS
+
+// originally based on https://github.com/jimon/osx_app_in_plain_c
 
 #include "tigr_internal.h"
 #include "tigr_objc.h"
@@ -37,8 +39,9 @@ enum {
     NSKeyDownMask = 1 << NSKeyDown,
     NSKeyUp = 11,
     NSKeyUpMask = 1 << NSKeyUp,
-    NSAllEventMask = NSUIntegerMax,
 };
+
+NSUInteger NSAllEventMask = NSUIntegerMax;
 
 extern id NSApp;
 extern id const NSDefaultRunLoopMode;
@@ -50,7 +53,7 @@ bool terminated = false;
 
 static uint64_t tigrTimestamp = 0;
 
-void _tigrResetTime() {
+void _tigrResetTime(void) {
     tigrTimestamp = mach_absolute_time();
 }
 
@@ -68,7 +71,7 @@ TigrInternal* _tigrInternalCocoa(id window) {
 }
 
 // we gonna construct objective-c class by hand in runtime, so wow, so hacker!
-NSUInteger applicationShouldTerminate(id self, SEL _sel, id sender) {
+NSUInteger applicationShouldTerminate(id self, SEL sel, id sender) {
     terminated = true;
     return 0;
 }
@@ -161,7 +164,7 @@ static void _showPools(const char* context) {
 #define showPools(x)
 #endif
 
-static id pushPool() {
+static id pushPool(void) {
     id pool = objc_msgSend_id(class("NSAutoreleasePool"), sel("alloc"));
     return objc_msgSend_id(pool, sel("init"));
 }
@@ -170,12 +173,12 @@ static void popPool(id pool) {
     objc_msgSend_void(pool, sel("drain"));
 }
 
-void _tigrCleanupOSX() {
+void _tigrCleanupOSX(void) {
     showPools("cleanup");
     popPool(autoreleasePool);
 }
 
-void tigrInitOSX() {
+void tigrInitOSX(void) {
     if (tigrOSXInited)
         return;
 
@@ -355,10 +358,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     objc_msgSend_void_bool(NSApp, sel("activateIgnoringOtherApps:"), YES);
 
-    // Wrap a bitmap around it.
-    bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
-    bmp->handle = window;
-
     NSSize windowContentSize = _tigrContentBackingSize(window);
 
     // In AUTO mode, always use a 1:1 pixel size, unless downscaled by tigrEnforceScale below.
@@ -373,6 +372,9 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
         h = windowContentSize.height / windowScale;
         bitmapScale = tigrEnforceScale(bitmapScale, flags);
     }
+
+    bmp = tigrBitmap2(w, h, sizeof(TigrInternal));
+    bmp->handle = window;
 
     // Set the handle
     object_setInstanceVariable(wdg, "tigrHandle", (void*)bmp);
@@ -905,29 +907,28 @@ void tigrUpdate(Tigr* bmp) {
         eventMask &= ~(NSKeyDownMask | NSKeyUpMask);
     }
 
-    id distantPast = objc_msgSend_id(class("NSDate"), sel("distantPast"));
     id event = 0;
-    int processedEvents;
     BOOL visible = 0;
+
+    uint64_t now = mach_absolute_time();
+    uint64_t passed = now - tigrTimestamp;
 
     do {
         event =
             objc_msgSend_t(id, NSUInteger, id, id, BOOL)(NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"),
-                                                         eventMask, distantPast, NSDefaultRunLoopMode, YES);
+                                                         eventMask, nil, NSDefaultRunLoopMode, YES);
 
         if (event != 0) {
-            processedEvents++;
             _tigrOnCocoaEvent(event, window);
         } else {
             visible = _tigrIsWindowVisible(window);
         }
     } while (event != 0 || !visible);
 
-    if (processedEvents) {
-        // The event processing loop above is blocking, which causes timing to freeze.
-        // Reset the time here to hide that fact from client code.
-        _tigrResetTime();
-    }
+    // The event processing loop above blocks during resize, which causes updates to freeze
+    // but real time keeps ticking. We pretend that the event processing took no time
+    // to avoid huge jumps in tigrTime.
+    tigrTimestamp = mach_absolute_time() - passed;
 
     // do runloop stuff
     objc_msgSend_void(NSApp, sel("updateWindows"));
@@ -1034,7 +1035,7 @@ int tigrReadChar(Tigr* bmp) {
     return c;
 }
 
-float tigrTime() {
+float tigrTime(void) {
     static mach_timebase_info_data_t timebaseInfo;
 
     if (timebaseInfo.denom == 0) {
@@ -1049,4 +1050,5 @@ float tigrTime() {
     return (float)elapsed;
 }
 
-#endif
+#endif // __MACOS__
+#endif // #ifndef TIGR_HEADLESS

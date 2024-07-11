@@ -2,22 +2,43 @@ plugins {
     id 'com.android.application'
 }
 
-android {
-    compileSdk 29
-    ndkVersion '21.0.6113669'
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+tasks.withType(JavaCompile) {
+    options.deprecation = true
+}
+
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
+android {
+    namespace 'timogr.app'
+    compileSdk 34
+    ndkVersion '27.0.11902837'
 
     defaultConfig {
         applicationId 'timogr.app'
         minSdk 26
-        targetSdk 29
+        targetSdk 33
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_STL=c++_static', '-std=c++17'
+                arguments '-DANDROID_STL=c++_shared'
             }
+        }
+        versionCode 2
+        versionName '1.0.1'
+    }
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
         }
     }
     buildFeatures {
@@ -25,14 +46,20 @@ android {
     }
     buildTypes {
         release {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
         debug {
             externalNativeBuild {
                 cmake {
-                    cFlags '-g'
+                    arguments "-DCMAKE_BUILD_TYPE=Debug"
                 }
             }
             packagingOptions {
@@ -49,7 +76,8 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.games:games-frame-pacing:1.9.0'
+    implementation 'androidx.games:games-frame-pacing:2.1.0'
+    implementation 'androidx.annotation:annotation:1.8.0'
 }
 
 task printAppID {

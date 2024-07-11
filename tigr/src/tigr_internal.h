@@ -5,7 +5,9 @@
 #define _CRT_SECURE_NO_WARNINGS NOPE
 
 // Graphics configuration.
+#ifndef TIGR_HEADLESS
 #define TIGR_GAPI_GL
+#endif
 
 // Creates a new bitmap, with extra payload bytes.
 Tigr* tigrBitmap2(int w, int h, int extra);
@@ -28,7 +30,7 @@ void tigrPosition(Tigr* bmp, int scale, int windowW, int windowH, int out[4]);
 #include <windows.h>
 #endif
 
-#if __linux__ && !__ANDROID__
+#if !defined(TIGR_HEADLESS) && __linux__ && !__ANDROID__
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #endif
@@ -89,8 +91,6 @@ typedef struct {
     int shown, closed;
 #ifdef TIGR_GAPI_GL
     GLStuff gl;
-#endif
-
 #ifdef _WIN32
     wchar_t* wtitle;
     DWORD dwStyle;
@@ -106,6 +106,7 @@ typedef struct {
     XIC ic;
 #endif  // __ANDROID__
 #endif  // __linux__
+#endif  // TIGR_GAPI_GL
 
     Tigr* widgets;
     int widgetsWanted;

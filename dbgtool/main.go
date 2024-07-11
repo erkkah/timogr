@@ -102,12 +102,11 @@ func main() {
 		}
 		err := LaunchEmulator(options.SDKRoot, emulator)
 		if err != nil {
-			fatal(fmt.Sprintf("Failed to launch emulator (output from emulator tool):\n%v", err))
+			fatal(fmt.Sprintf("Failed to launch emulator:\n%v", err))
 		}
 		os.Exit(0)
 	case "stop":
 		stopOnly = true
-		break
 	case "start":
 		break
 	default:
@@ -270,12 +269,15 @@ func setupForwards(adb *ADB, port int, jPort int, socket string) error {
 }
 
 func collectDebugBinaries(adb *ADB) error {
-	err := os.MkdirAll(".debug", 775)
+	err := os.MkdirAll(".debug", 0775)
 	if err != nil {
 		return err
 	}
 
 	nativeLib, err := findNativeLibrary(adb)
+	if err != nil {
+		return err
+	}
 	err = copyFile(nativeLib, path.Join(".debug", "libnative-activity.so"))
 	if err != nil {
 		return err
@@ -308,7 +310,7 @@ func findNativeLibrary(adb *ADB) (string, error) {
 	abi := strings.TrimSpace(output)
 
 	expectedSuffix := fmt.Sprintf("/%s/libnative-activity.so", abi)
-	return findPath("app/build/intermediates/cmake/debug", expectedSuffix), nil
+	return findPath("app/build/intermediates/cxx/Debug", expectedSuffix), nil
 }
 
 func copyFile(src string, dest string) error {
@@ -316,7 +318,7 @@ func copyFile(src string, dest string) error {
 	if err != nil {
 		return err
 	}
-	destFile, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 664)
+	destFile, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0664)
 	if err != nil {
 		return err
 	}

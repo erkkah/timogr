@@ -42,6 +42,14 @@ Tigr* tigrBitmap(int w, int h) {
     return tigrBitmap2(w, h, 0);
 }
 
+#ifdef TIGR_HEADLESS
+void tigrFree(Tigr* bmp) {
+    free(bmp->pix);
+    free(bmp);
+}
+#endif // TIGR_HEADLESS
+
+
 void tigrResize(Tigr* bmp, int w, int h) {
     if (bmp->w == w && bmp->h == h) {
         return;
@@ -206,15 +214,22 @@ void tigrFillRect(Tigr* bmp, int x, int y, int w, int h, TPixel color) {
 
 void tigrRect(Tigr* bmp, int x, int y, int w, int h, TPixel color) {
     int x1, y1;
-    if (w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0) {
         return;
+    }
 
-    x1 = x + w - 1;
-    y1 = y + h - 1;
-    tigrLine(bmp, x, y, x1, y, color);
-    tigrLine(bmp, x1, y, x1, y1, color);
-    tigrLine(bmp, x1, y1, x, y1, color);
-    tigrLine(bmp, x, y1, x, y, color);
+    if (w == 1) {
+        tigrLine(bmp, x, y, x, y + h, color);
+    } else if (h == 1) {
+        tigrLine(bmp, x, y, x + w, y, color);
+    } else {
+        x1 = x + w - 1;
+        y1 = y + h - 1;
+        tigrLine(bmp, x, y, x1, y, color);
+        tigrLine(bmp, x1, y, x1, y1, color);
+        tigrLine(bmp, x1, y1, x, y1, color);
+        tigrLine(bmp, x, y1, x, y, color);
+    }
 }
 
 void tigrFillCircle(Tigr* bmp, int x0, int y0, int r, TPixel color) {

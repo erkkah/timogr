@@ -6,7 +6,7 @@
  * TIGR entry point.
  */
 void tigrMain() {
-    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_2X);
+    Tigr* screen = tigrWindow(1, 1, "Hello", TIGR_AUTO | TIGR_3X);
 
     int x;
     int y;
@@ -22,7 +22,10 @@ void tigrMain() {
     Tigr* logo = tigrLoadImage("timogr.png");
     if (!logo) {
         tigrError(0, "Failed to load image: %d", errno);
+        return;
     }
+
+    char typed[5] = "";
 
     while (!tigrClosed(screen)) {
         liveTime += tigrTime();
@@ -42,6 +45,12 @@ void tigrMain() {
             break;
         }
 
+        char ch = tigrReadChar(screen);
+        if (ch != 0) {
+            char *end = tigrEncodeUTF8(typed, ch);
+            *end = 0;
+        }
+        
         tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
 
         int logoX = (screen->w - logo->w) / 2;
@@ -67,10 +76,10 @@ void tigrMain() {
 
         tigrPrint(screen, tfont, textX, textY, tigrRGB(0xff, 0xff, 0xff), message);
 
-        char buf[32];
-        sprintf(buf, "%.2f", liveTime);
-        tigrPrint(screen, tfont, textX, textY + 20, tigrRGB(0xff, 0xff, 0xff), buf);
+        tigrPrint(screen, tfont, textX, textY + 20, tigrRGB(0xff, 0xff, 0xff), "%.2f", liveTime);
         
+        tigrPrint(screen, tfont, textX, textY + 40, tigrRGB(0x00, 0xff, 0xff), typed);
+
         tigrUpdate(screen);
     }
     tigrFree(screen);

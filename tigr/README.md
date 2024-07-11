@@ -31,6 +31,7 @@ There are no additional libraries to include; everything is baked right into you
 TIGR is free to copy with no restrictions; see [tigr.h](tigr.h).
 
 ## How do I program with TIGR?
+![](./demo.gif)
 
 Here's an example Hello World program. For more information, just read [tigr.h](tigr.h) to see the APIs available.
 
@@ -94,6 +95,8 @@ To get started on iOS, head over to the [TIMOGRiOS](https://github.com/erkkah/ti
 TIGR comes with a built-in bitmap font, accessed by the `tfont` variable. Custom fonts can be loaded from bitmaps using `tigrLoadFont`. A font bitmap contains rows of characters separated by same-colored borders. TIGR assumes that the borders use the same color as the top-left pixel in the bitmap. Each character is assumed to be drawn in white on a transparent background to make tinting work.
 
 Use the [tigrfont](https://github.com/erkkah/tigrfont) tool to create your own bitmap fonts from TTF or BDF font files.
+
+Since TIGR version 3.1, unicode-encoded font sheets are supported, making it possible to render any glyph in your fonts. Text is still just rendered LTR, though.
 
 ### Custom pixel shaders
 
