@@ -18,7 +18,8 @@ Oh, and you don't need Android Studio - it works just fine with the plain Androi
 * Install Android SDK (or Android Studio)
 * If not already in place, install the Android NDK (Use sdkmanager or Android Studio)
 * Make sure `ANDROID_SDK_ROOT` is set, and `JAVA_HOME` if gradle cannot find the correct version below.
-* Run a test build: `./gradlew build` (that's `gradlew.bat build` on Windows)
+* Copy keystore.properties.example to keystore.properties (and modify it if you want to sign your app)
+* Run a test build: `./gradlew buildCMakeDebug` (that's `gradlew.bat build` on Windows)
 * Tweak `app/build/build.gradle` if the test build complains about `compileSdkVersion` or `ndkVersion`
 * Plug in your device (or run an emulator), and run `./gradlew installDebug` to install the template TIMOGR app
 * Run the app (and report back if there are problems)
@@ -42,6 +43,18 @@ void tigrMain()
     tigrFree(screen);
 }
 ```
+
+## Debugging in VS Code
+
+**Experimental!**
+
+The project includes `.vscode` configuration of tasks for building and debugging directly in VS Code.
+
+> This currently requires a working `go` installation, so that you can build `go` executables.
+
+To get started, connect a device or launch an emulator, then simply press F5 to build and start debugging.
+
+> You can launch the default (first) emulator by running `./dbgtool/dbgtool emulator`.
 
 ## Some details and pointers
 
