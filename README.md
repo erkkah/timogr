@@ -6,10 +6,10 @@ TIMOGR is a tiny Android starter template for creating fullscreen 2D apps using 
 [TIGR](https://github.com/erkkah/tigr) library.
 
 Like TIGR, TIMOGR is designed to be small and mostly independent.
-The "hello world" compressed arm64-v8a release bundle is less than 350kB.
 
 TIMOGR takes care of the Android life-cycle stuff and lets you write the fun part of your little app.
-Oh, and you don't need Android Studio - it works just fine with the plain Android SDK + NDK.
+Oh, and you don't need Android Studio - it works just fine with the plain Android SDK + NDK,
+and you can build, run and debug from [within VS Code](#debugging-in-vs-code).
 
 ## Getting started
 
