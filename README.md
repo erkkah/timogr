@@ -11,6 +11,10 @@ TIMOGR takes care of the Android life-cycle stuff and lets you write the fun par
 Oh, and you don't need Android Studio - it works just fine with the plain Android SDK + NDK,
 and you can build, run and debug from [within VS Code](#debugging-in-vs-code).
 
+## Demo app
+
+The template app in this repo is available on [Google Play :arrow_forward:](https://play.google.com/store/apps/details?id=timogr.app).
+
 ## Getting started
 
 * [Generate](https://github.com/erkkah/timogr/generate) your own repo based on this template
