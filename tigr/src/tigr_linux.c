@@ -26,6 +26,10 @@ static GLXFBConfig fbConfig;
 
 static PFNGLXCREATECONTEXTATTRIBSARBPROC glXCreateContextAttribsARB = 0;
 
+static void tearDownX11Stuff() {
+    XCloseDisplay(dpy);
+}
+
 static void initX11Stuff() {
     static int done = 0;
     if (!done) {
@@ -56,6 +60,7 @@ static void initX11Stuff() {
             tigrError(0, "Failed to choose FB config");
         }
         fbConfig = fbc[0];
+        XFree(fbc);
 
         vi = glXGetVisualFromFBConfig(dpy, fbConfig);
         if (vi == NULL) {
@@ -76,6 +81,8 @@ static void initX11Stuff() {
         }
 
         wmDeleteMessage = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+
+        atexit(tearDownX11Stuff);
 
         done = 1;
     }
@@ -176,9 +183,9 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     if (flags & TIGR_FULLSCREEN) {
         // https://superuser.com/questions/1680077/does-x11-actually-have-a-native-fullscreen-mode
-        Atom wm_state   = XInternAtom (dpy, "_NET_WM_STATE", true );
-        Atom wm_fullscreen = XInternAtom (dpy, "_NET_WM_STATE_FULLSCREEN", true );
-        XChangeProperty(dpy, xwin, wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char *)&wm_fullscreen, 1);
+        Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", true);
+        Atom wm_fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", true);
+        XChangeProperty(dpy, xwin, wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char*)&wm_fullscreen, 1);
     } else {
         // Wait for window to get mapped
         for (;;) {
@@ -197,6 +204,9 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
         XResizeWindow(dpy, xwin, w * scale, h * scale);
     }
 
+    // Enable mouse events reporting (needed for mouse wheel events)
+    XSelectInput(dpy, xwin, ButtonPressMask);
+
     XTextProperty prop;
     int result = Xutf8TextListToTextProperty(dpy, (char**)&title, 1, XUTF8StringStyle, &prop);
     if (result == Success) {
@@ -214,7 +224,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     XSetWMProtocols(dpy, xwin, &wmDeleteMessage, 1);
 
-    glc = glXCreateContext(dpy, vi, NULL, GL_TRUE);
     int contextAttributes[] = { GLX_CONTEXT_MAJOR_VERSION_ARB, 3, GLX_CONTEXT_MINOR_VERSION_ARB, 3, None };
     glc = glXCreateContextAttribsARB(dpy, fbConfig, NULL, GL_TRUE, contextAttributes);
     glXMakeCurrent(dpy, xwin, glc);
@@ -505,6 +514,33 @@ static void tigrProcessInput(TigrInternal* win, int winWidth, int winHeight) {
         prevButtons = buttons;
     }
 
+    // Retrieve mouse wheel events - Cannot be done in the XQueryPointer call
+    // -> https://comp.unix.programmer.narkive.com/eOnjkQ6L/xlib-xquerypointer-and-button4mask-button5mask#post2
+    // Button4 = WheelUp / Button5 = WheelDown
+    XEvent mouseButtonEvent;
+    while (XPending(win->dpy)) {
+        XPeekEvent(win->dpy, &mouseButtonEvent);
+        if (mouseButtonEvent.xany.type == ButtonPress) {
+            switch (mouseButtonEvent.xbutton.button) {
+                case Button4:
+                    win->scrollDeltaY += 1;
+                    break;
+                case Button5:
+                    win->scrollDeltaY -= 1;
+                    break;
+                case 6:
+                    win->scrollDeltaX += 1;
+                    break;
+                case 7:
+                    win->scrollDeltaX -= 1;
+                    break;
+            }
+            XNextEvent(win->dpy, &mouseButtonEvent);
+        } else {
+            break;
+        }
+    }
+
     static char prevKeys[32];
     char keys[32];
     XQueryKeymap(win->dpy, keys);
@@ -553,6 +589,8 @@ void tigrUpdate(Tigr* bmp) {
     TigrInternal* win = tigrInternal(bmp);
 
     memcpy(win->prev, win->keys, 256);
+    win->scrollDeltaX = 0;
+    win->scrollDeltaY = 0;
 
     XGetWindowAttributes(win->dpy, win->win, &gwa);
 
@@ -631,6 +669,17 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
     return buttons ? 1 : 0;
 }
 
+void tigrScrollWheel(Tigr* bmp, float* x, float* y) {
+    TigrInternal* win;
+    win = tigrInternal(bmp);
+    if (x) {
+        *x = win->scrollDeltaX;
+    }
+    if (y) {
+        *y = win->scrollDeltaY;
+    }
+}
+
 #endif  // __linux__ && !__ANDROID__
 
-#endif // #ifndef TIGR_HEADLESS
+#endif  // #ifndef TIGR_HEADLESS

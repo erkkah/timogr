@@ -1,4 +1,4 @@
-// TIGR - TIny GRaphics Library - v3.1
+// TIGR - TIny GRaphics Library - v3.2
 //        ^^   ^^
 //
 // rawr.
@@ -238,7 +238,8 @@ typedef enum {
     TCP_UTF32 = 12001
 } TCodepage;
 
-// Loads a font.
+// Loads a font from a bitmap font sheet.
+// The loaded font takes ownership of the provided bitmap.
 //
 // Codepages:
 //
@@ -254,7 +255,7 @@ typedef enum {
 //
 TigrFont *tigrLoadFont(Tigr *bitmap, int codepage);
 
-// Frees a font.
+// Frees a font and associated font sheet.
 void tigrFreeFont(TigrFont *font);
 
 // Prints UTF-8 text onto a bitmap.
@@ -286,6 +287,9 @@ typedef enum {
 } TKey;
 
 // Returns mouse input for a window.
+// The value set to "buttons" is a bit set where bits 0, 1 and 2
+// corresponds to the left, right and middle buttons.
+// A set bit indicates that a button is held.
 void tigrMouse(Tigr *bmp, int *x, int *y, int *buttons);
 
 typedef struct {
@@ -296,6 +300,12 @@ typedef struct {
 // Reads touch input for a window.
 // Returns number of touch points read.
 int tigrTouch(Tigr *bmp, TigrTouchPoint* points, int maxPoints);
+
+// Reads the delta of the scroll "wheel" in somewhat platform neutral
+// units where 1.0 corresponds to a "notch". The actual correlation between
+// physical movement and this number varies between platforms, input methods
+// and settings.
+void tigrScrollWheel(Tigr* bmp, float* x, float *y);
 
 // Reads the keyboard for a window.
 // Returns non-zero if a key is pressed/held.
