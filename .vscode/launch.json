@@ -8,11 +8,16 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
+            "initCommands": [
+                "platform select remote-android",
+            ],
             "targetCreateCommands": [
                 "target create ${workspaceFolder}/.debug/exe",
             ],
             "processCreateCommands": [
                 "gdb-remote 6666",
+                "process handle SIGSEGV -s false -n false",
+                "continue"
             ],
             "preLaunchTask": "timogr: debug",
             "postDebugTask": "timogr: stop",
