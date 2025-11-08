@@ -126,6 +126,7 @@ typedef struct {
 #if defined(__MACOS__)
     int mouseInView;
     int mouseButtons;
+    double frameTime;
 #endif  // __MACOS__
 #if defined(__linux__) || defined(__IOS__)
     int mouseButtons;
@@ -136,6 +137,10 @@ typedef struct {
     int numTouchPoints;
     TigrTouchPoint touchPoints[MAX_TOUCH_POINTS];
 #endif  // __ANDROID__ __IOS__
+#if defined(_WIN32) || defined(__linux__) || defined(__MACOS__)
+    float scrollDeltaX;
+    float scrollDeltaY;
+#endif  // _WIN32 __linux__ __MACOS__
 } TigrInternal;
 // ----------------------------------------------------------
 
