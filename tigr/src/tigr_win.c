@@ -17,11 +17,13 @@ TigrInternal* tigrInternal(Tigr* bmp) {
 #include <stdlib.h>
 #include <stddef.h>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "opengl32")  // glViewport
 #pragma comment(lib, "shell32")   // CommandLineToArgvW
 #pragma comment(lib, "user32")    // SetWindowLong
 #pragma comment(lib, "gdi32")     // ChoosePixelFormat
 #pragma comment(lib, "advapi32")  // RegSetValueEx
+#endif
 
 #define WIDGET_SCALE 3
 #define WIDGET_FADE 16
@@ -130,14 +132,14 @@ void tigrWinUpdateWidgets(Tigr* bmp, int dw, int dh) {
                 str[1] = 0;
                 break;  // "_" (minimize)
             case 1:
-                str[0] = 0xEF;
-                str[1] = 0xBF;
-                str[2] = 0xBD;
+                str[0] = (char)0xEF;
+                str[1] = (char)0xBF;
+                str[2] = (char)0xBD;
                 str[3] = 0;
                 break;  // "[]" (maximize)
             case 2:
-                str[0] = 0xC3;
-                str[1] = 0x97;
+                str[0] = (char)0xC3;
+                str[1] = (char)0x97;
                 str[2] = 0;
                 break;  // "x" (close)
         }
@@ -190,6 +192,8 @@ void tigrUpdate(Tigr* bmp) {
     }
 
     memcpy(win->prev, win->keys, 256);
+    win->scrollDeltaX = 0;
+    win->scrollDeltaY = 0;
 
     // Run the message pump.
     while (PeekMessage(&msg, (HWND)bmp->handle, 0, 0, PM_REMOVE)) {
@@ -394,6 +398,14 @@ LRESULT CALLBACK tigrWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
             if (win)
                 win->keys[wParam] = 0;
             return DefWindowProcW(hWnd, message, wParam, lParam);
+        case WM_MOUSEWHEEL:
+            if (win)
+                win->scrollDeltaY += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+            return DefWindowProcW(hWnd, message, wParam, lParam);
+        case WM_MOUSEHWHEEL:
+            if (win)
+                win->scrollDeltaX += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+            return DefWindowProcW(hWnd, message, wParam, lParam);
         default:
             return DefWindowProcW(hWnd, message, wParam, lParam);
     }
@@ -406,7 +418,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     HWND hWnd;
     DWORD dwStyle;
     RECT rc;
-    DWORD err;
     Tigr* bmp;
     TigrInternal* win;
 #ifndef TIGR_DO_NOT_PRESERVE_WINDOW_POSITION
@@ -455,7 +466,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     // Make a window.
     hWnd = CreateWindowW(L"TIGR", wtitle, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,
                          NULL, NULL, wcex.hInstance, NULL);
-    err = GetLastError();
     if (!hWnd)
         ExitProcess(1);
 
@@ -540,7 +550,7 @@ int tigrClosed(Tigr* bmp) {
     return val;
 }
 
-float tigrTime() {
+float tigrTime(void) {
     static int first = 1;
     static LARGE_INTEGER prev;
 
@@ -585,6 +595,17 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
         tigrMouse(bmp, &points[0].x, &points[1].y, &buttons);
     }
     return buttons ? 1 : 0;
+}
+
+void tigrScrollWheel(Tigr* bmp, float* x, float* y) {
+    TigrInternal* win;
+    win = tigrInternal(bmp);
+    if (x) {
+        *x = win->scrollDeltaX;
+    }
+    if (y) {
+        *y = win->scrollDeltaY;
+    }
 }
 
 static int tigrWinVK(int key) {

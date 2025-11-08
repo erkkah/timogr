@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -84,7 +84,7 @@ func (m *AndroidManifest) mainActivityIntent() string {
 }
 
 func parseManifest(manifest string) (*AndroidManifest, error) {
-	bytes, err := ioutil.ReadFile(manifest)
+	bytes, err := os.ReadFile(manifest)
 	if err != nil {
 		return nil, err
 	}

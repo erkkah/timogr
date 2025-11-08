@@ -133,6 +133,7 @@ typedef struct {
 #if defined(__MACOS__)
     int mouseInView;
     int mouseButtons;
+    double frameTime;
 #endif  // __MACOS__
 #if defined(__linux__) || defined(__IOS__)
     int mouseButtons;
@@ -143,6 +144,10 @@ typedef struct {
     int numTouchPoints;
     TigrTouchPoint touchPoints[MAX_TOUCH_POINTS];
 #endif  // __ANDROID__ __IOS__
+#if defined(_WIN32) || defined(__linux__) || defined(__MACOS__)
+    float scrollDeltaX;
+    float scrollDeltaY;
+#endif  // _WIN32 __linux__ __MACOS__
 } TigrInternal;
 // ----------------------------------------------------------
 
@@ -322,6 +327,9 @@ void tigrResize(Tigr* bmp, int w, int h) {
 }
 
 int tigrCalcScale(int bmpW, int bmpH, int areaW, int areaH) {
+    if (bmpW == 0 || bmpH == 0) {
+        tigrError(0, "Invalid bitmap size, (%dx%d)", bmpW, bmpH);
+    }
     // We want it as big as possible in the window, but still
     // maintaining the correct aspect ratio, and always
     // having an integer pixel size.
@@ -1952,11 +1960,13 @@ TigrInternal* tigrInternal(Tigr* bmp) {
 #include <stdlib.h>
 #include <stddef.h>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "opengl32")  // glViewport
 #pragma comment(lib, "shell32")   // CommandLineToArgvW
 #pragma comment(lib, "user32")    // SetWindowLong
 #pragma comment(lib, "gdi32")     // ChoosePixelFormat
 #pragma comment(lib, "advapi32")  // RegSetValueEx
+#endif
 
 #define WIDGET_SCALE 3
 #define WIDGET_FADE 16
@@ -2065,14 +2075,14 @@ void tigrWinUpdateWidgets(Tigr* bmp, int dw, int dh) {
                 str[1] = 0;
                 break;  // "_" (minimize)
             case 1:
-                str[0] = 0xEF;
-                str[1] = 0xBF;
-                str[2] = 0xBD;
+                str[0] = (char)0xEF;
+                str[1] = (char)0xBF;
+                str[2] = (char)0xBD;
                 str[3] = 0;
                 break;  // "[]" (maximize)
             case 2:
-                str[0] = 0xC3;
-                str[1] = 0x97;
+                str[0] = (char)0xC3;
+                str[1] = (char)0x97;
                 str[2] = 0;
                 break;  // "x" (close)
         }
@@ -2125,6 +2135,8 @@ void tigrUpdate(Tigr* bmp) {
     }
 
     memcpy(win->prev, win->keys, 256);
+    win->scrollDeltaX = 0;
+    win->scrollDeltaY = 0;
 
     // Run the message pump.
     while (PeekMessage(&msg, (HWND)bmp->handle, 0, 0, PM_REMOVE)) {
@@ -2329,6 +2341,14 @@ LRESULT CALLBACK tigrWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
             if (win)
                 win->keys[wParam] = 0;
             return DefWindowProcW(hWnd, message, wParam, lParam);
+        case WM_MOUSEWHEEL:
+            if (win)
+                win->scrollDeltaY += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+            return DefWindowProcW(hWnd, message, wParam, lParam);
+        case WM_MOUSEHWHEEL:
+            if (win)
+                win->scrollDeltaX += (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+            return DefWindowProcW(hWnd, message, wParam, lParam);
         default:
             return DefWindowProcW(hWnd, message, wParam, lParam);
     }
@@ -2341,7 +2361,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     HWND hWnd;
     DWORD dwStyle;
     RECT rc;
-    DWORD err;
     Tigr* bmp;
     TigrInternal* win;
 #ifndef TIGR_DO_NOT_PRESERVE_WINDOW_POSITION
@@ -2390,7 +2409,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     // Make a window.
     hWnd = CreateWindowW(L"TIGR", wtitle, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,
                          NULL, NULL, wcex.hInstance, NULL);
-    err = GetLastError();
     if (!hWnd)
         ExitProcess(1);
 
@@ -2475,7 +2493,7 @@ int tigrClosed(Tigr* bmp) {
     return val;
 }
 
-float tigrTime() {
+float tigrTime(void) {
     static int first = 1;
     static LARGE_INTEGER prev;
 
@@ -2520,6 +2538,17 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
         tigrMouse(bmp, &points[0].x, &points[1].y, &buttons);
     }
     return buttons ? 1 : 0;
+}
+
+void tigrScrollWheel(Tigr* bmp, float* x, float* y) {
+    TigrInternal* win;
+    win = tigrInternal(bmp);
+    if (x) {
+        *x = win->scrollDeltaX;
+    }
+    if (y) {
+        *y = win->scrollDeltaY;
+    }
 }
 
 static int tigrWinVK(int key) {
@@ -2732,6 +2761,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 // originally based on https://github.com/jimon/osx_app_in_plain_c
 
 //#include "tigr_internal.h"
+
+#if __MACOS__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 //////// Start of inlined file: tigr_objc.h ////////
 
 #ifndef TIGR_OBJC_H
@@ -2791,8 +2824,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 //////// End of inlined file: tigr_objc.h ////////
 
-
-#if __MACOS__
+#pragma clang diagnostic pop
 
 #include <assert.h>
 #include <limits.h>
@@ -2811,12 +2843,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #include <objc/objc.h>
 #include <objc/runtime.h>
 
-#ifdef __OBJC__
-#import <Cocoa/Cocoa.h>
-#else
-// this is how they are defined originally
 #include <CoreGraphics/CGBase.h>
 #include <CoreGraphics/CGGeometry.h>
+
 typedef CGPoint NSPoint;
 typedef CGSize NSSize;
 typedef CGRect NSRect;
@@ -2834,17 +2863,24 @@ extern id NSApp;
 extern id const NSDefaultRunLoopMode;
 
 #define NSApplicationActivationPolicyRegular 0
-#endif
 
 bool terminated = false;
 
-static uint64_t tigrTimestamp = 0;
+static double _tigrTimestamp = 0;
 
-void _tigrResetTime(void) {
-    tigrTimestamp = mach_absolute_time();
+double _currentMediaTime(void) {
+    uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    double current = now * 1.0E-9;
+    return current;
 }
 
-TigrInternal* _tigrInternalCocoa(id window) {
+TigrInternal* _tigrInternalFromWindowDelegate(id wdg) {
+    Tigr* bmp = 0;
+    object_getInstanceVariable(wdg, "tigrHandle", (void**)&bmp);
+    return bmp ? tigrInternal(bmp) : NULL;
+}
+
+TigrInternal* _tigrInternalFromWindow(id window) {
     if (!window)
         return NULL;
 
@@ -2852,12 +2888,9 @@ TigrInternal* _tigrInternalCocoa(id window) {
     if (!wdg)
         return NULL;
 
-    Tigr* bmp = 0;
-    object_getInstanceVariable(wdg, "tigrHandle", (void**)&bmp);
-    return bmp ? tigrInternal(bmp) : NULL;
+    return _tigrInternalFromWindowDelegate(wdg);
 }
 
-// we gonna construct objective-c class by hand in runtime, so wow, so hacker!
 NSUInteger applicationShouldTerminate(id self, SEL sel, id sender) {
     terminated = true;
     return 0;
@@ -2898,9 +2931,18 @@ void windowDidBecomeKey(id self, SEL _sel, id notification) {
     }
 }
 
+void onFrame(id self, SEL _sel, id displayLink) {
+    double timestamp = objc_msgSend_t(double)(displayLink, sel("timestamp"));
+    TigrInternal* win = _tigrInternalFromWindowDelegate(self);
+    if (win == NULL) {
+        return;
+    }
+    win->frameTime = timestamp;
+}
+
 void mouseEntered(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
-    TigrInternal* win = _tigrInternalCocoa(window);
+    TigrInternal* win = _tigrInternalFromWindow(window);
     if (win) {
         win->mouseInView = 1;
         if (win->flags & TIGR_NOCURSOR) {
@@ -2911,7 +2953,7 @@ void mouseEntered(id self, SEL _sel, id event) {
 
 void mouseExited(id self, SEL _sel, id event) {
     id window = objc_msgSend_id(event, sel("window"));
-    TigrInternal* win = _tigrInternalCocoa(window);
+    TigrInternal* win = _tigrInternalFromWindow(window);
     if (win) {
         win->mouseInView = 0;
         if (win->flags & TIGR_NOCURSOR) {
@@ -3091,6 +3133,7 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     addMethod(WindowDelegateClass, "windowDidBecomeKey:", windowDidBecomeKey, "v@:@");
     addMethod(WindowDelegateClass, "mouseEntered:", mouseEntered, "v@:@");
     addMethod(WindowDelegateClass, "mouseExited:", mouseExited, "v@:@");
+    addMethod(WindowDelegateClass, "onFrame:", onFrame, "v@:@");
 
     id wdgAlloc = objc_msgSend_id((id)WindowDelegateClass, sel("alloc"));
     id wdg = objc_msgSend_id(wdgAlloc, sel("init"));
@@ -3108,6 +3151,20 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     objc_msgSend_void_id(window, sel("setDelegate:"), wdg);
 
     id contentView = objc_msgSend_id(window, sel("contentView"));
+
+    objc_msgSend_void_bool(contentView, sel("setWantsLayer:"), NO);
+
+    bool useDisplayLink = objc_msgSend_t(bool, SEL)(class("NSView"), sel("instancesRespondToSelector:"),
+                                                    sel("displayLinkWithTarget:selector:"));
+
+    if (useDisplayLink) {
+        // Use display link to pace frames, if possible
+        id link =
+            objc_msgSend_t(id, id, SEL)(contentView, sel("displayLinkWithTarget:selector:"), wdg, sel("onFrame:"));
+        id runLoop = objc_msgSend_id(class("NSRunLoop"), sel("currentRunLoop"));
+        objc_msgSend_t(void, id, id)(link, sel("addToRunLoop:forMode:"), runLoop, NSDefaultRunLoopMode);
+        objc_msgSend_void_bool(link, sel("setPaused:"), NO);
+    }
 
     int wantsHighRes = (flags & TIGR_RETINA);
     objc_msgSend_void_bool(contentView, sel("setWantsBestResolutionOpenGLSurface:"), wantsHighRes);
@@ -3195,10 +3252,18 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
     win->gl.glContext = openGLContext;
     win->mouseButtons = 0;
     win->mouseInView = 0;
+    win->frameTime = 0;
 
     tigrPosition(bmp, win->scale, bmp->w, bmp->h, win->pos);
 
+    GLint swapInterval = 1;
+    NSInteger NSOpenGLCPSwapInterval = 222;
+
+    objc_msgSend_t(void, GLint*, NSInteger)(openGLContext, sel("setValues:forParameter:"), &swapInterval,
+                                            NSOpenGLCPSwapInterval);
+
     objc_msgSend_void(openGLContext, sel("makeCurrentContext"));
+
     tigrGAPICreate(bmp);
 
     return bmp;
@@ -3559,7 +3624,7 @@ void _tigrOnCocoaEvent(id event, id window) {
     if (!event)
         return;
 
-    TigrInternal* win = _tigrInternalCocoa(window);
+    TigrInternal* win = _tigrInternalFromWindow(window);
     if (!win)  // just pipe the event
     {
         objc_msgSend_void_id(NSApp, sel("sendEvent:"), event);
@@ -3598,6 +3663,14 @@ void _tigrOnCocoaEvent(id event, id window) {
             NSInteger number = objc_msgSend_t(NSInteger)(event, sel("buttonNumber"));
             if (number == 2)
                 win->mouseButtons &= ~4;
+            break;
+        }
+        case 22:  // NSScrollWheel
+        {
+            CGFloat deltaX = objc_msgSend_t(CGFloat)(event, sel("deltaX"));
+            win->scrollDeltaX += deltaX;
+            CGFloat deltaY = objc_msgSend_t(CGFloat)(event, sel("deltaY"));
+            win->scrollDeltaY += deltaY;
             break;
         }
         case 12:  // NSFlagsChanged
@@ -3694,16 +3767,18 @@ void tigrUpdate(Tigr* bmp) {
         eventMask &= ~(NSKeyDownMask | NSKeyUpMask);
     }
 
+    win->scrollDeltaX = 0;
+    win->scrollDeltaY = 0;
+
     id event = 0;
     BOOL visible = 0;
 
-    uint64_t now = mach_absolute_time();
-    uint64_t passed = now - tigrTimestamp;
+    double now = _currentMediaTime();
+    double passed = now - _tigrTimestamp;
 
     do {
-        event =
-            objc_msgSend_t(id, NSUInteger, id, id, BOOL)(NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"),
-                                                         eventMask, nil, NSDefaultRunLoopMode, YES);
+        event = objc_msgSend_t(id, NSUInteger, id, id, BOOL)(
+            NSApp, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), eventMask, nil, NSDefaultRunLoopMode, YES);
 
         if (event != 0) {
             _tigrOnCocoaEvent(event, window);
@@ -3715,9 +3790,10 @@ void tigrUpdate(Tigr* bmp) {
     // The event processing loop above blocks during resize, which causes updates to freeze
     // but real time keeps ticking. We pretend that the event processing took no time
     // to avoid huge jumps in tigrTime.
-    tigrTimestamp = mach_absolute_time() - passed;
+    if (_tigrTimestamp != 0) {
+        _tigrTimestamp = _currentMediaTime() - passed;
+    }
 
-    // do runloop stuff
     objc_msgSend_void(NSApp, sel("updateWindows"));
     objc_msgSend_void(openGLContext, sel("update"));
     tigrGAPIBegin(bmp);
@@ -3733,6 +3809,27 @@ void tigrUpdate(Tigr* bmp) {
     tigrGAPIPresent(bmp, windowSize.width, windowSize.height);
     objc_msgSend_void(openGLContext, sel("flushBuffer"));
     tigrGAPIEnd(bmp);
+
+    id runLoop = objc_msgSend_id(class("NSRunLoop"), sel("currentRunLoop"));
+    id until = objc_msgSend_t(id, float)(class("NSDate"), sel("dateWithTimeIntervalSinceNow:"), 0.005f);
+    double lastFrameTime = win->frameTime;
+    static const double cap = 1.0 / 60;
+
+    while (win->frameTime <= lastFrameTime) {
+        // Run the event loop for 5ms at a time..
+        objc_msgSend_t(void, id, id)(runLoop, sel("runMode:beforeDate:"), NSDefaultRunLoopMode, until);
+        // ..until we get a frame callback..
+        if (win->frameTime > lastFrameTime) {
+            break;
+        }
+        double now = _currentMediaTime();
+        double passed = now - lastFrameTime;
+        // ..or it's time to cap the wait at 60 fps
+        if (passed > cap) {
+            win->frameTime = now;
+            break;
+        }
+    }
 }
 
 int tigrGAPIBegin(Tigr* bmp) {
@@ -3801,6 +3898,17 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
     return buttons ? 1 : 0;
 }
 
+void tigrScrollWheel(Tigr* bmp, float* x, float* y) {
+    TigrInternal* win;
+    win = tigrInternal(bmp);
+    if (x) {
+        *x = win->scrollDeltaX;
+    }
+    if (y) {
+        *y = win->scrollDeltaY;
+    }
+}
+
 int tigrKeyDown(Tigr* bmp, int key) {
     TigrInternal* win;
     assert(key < 256);
@@ -3823,22 +3931,19 @@ int tigrReadChar(Tigr* bmp) {
 }
 
 float tigrTime(void) {
-    static mach_timebase_info_data_t timebaseInfo;
+    double elapsed = 0;
 
-    if (timebaseInfo.denom == 0) {
-        mach_timebase_info(&timebaseInfo);
-        tigrTimestamp = mach_absolute_time();
-        return 0.0f;
+    double now = _currentMediaTime();
+    if (_tigrTimestamp != 0) {
+        elapsed = now - _tigrTimestamp;
     }
+    _tigrTimestamp = now;
 
-    uint64_t current_time = mach_absolute_time();
-    double elapsed = (double)(current_time - tigrTimestamp) * timebaseInfo.numer / (timebaseInfo.denom * 1000000000.0);
-    tigrTimestamp = current_time;
     return (float)elapsed;
 }
 
-#endif // __MACOS__
-#endif // #ifndef TIGR_HEADLESS
+#endif  // __MACOS__
+#endif  // #ifndef TIGR_HEADLESS
 
 //////// End of inlined file: tigr_osx.c ////////
 
@@ -4316,6 +4421,15 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
     return maxPoints < win->numTouchPoints ? maxPoints : win->numTouchPoints;
 }
 
+void tigrMouseWheel(Tigr* bmp, float* x, float* y) {
+    if (x) {
+        *x = 0;
+    }
+    if (y) {
+        *y = 0;
+    }
+}
+
 void tigrFree(Tigr* bmp) {
     if (bmp->handle) {
         TigrInternal* win = tigrInternal(bmp);
@@ -4364,7 +4478,7 @@ void* tigrReadFile(const char* fileName, int* length) {
 
 #endif  // __IOS__
 
-#endif // #ifndef TIGR_HEADLESS
+#endif  // #ifndef TIGR_HEADLESS
 
 //////// End of inlined file: tigr_ios.c ////////
 
@@ -4446,6 +4560,10 @@ static GLXFBConfig fbConfig;
 
 static PFNGLXCREATECONTEXTATTRIBSARBPROC glXCreateContextAttribsARB = 0;
 
+static void tearDownX11Stuff() {
+    XCloseDisplay(dpy);
+}
+
 static void initX11Stuff() {
     static int done = 0;
     if (!done) {
@@ -4476,6 +4594,7 @@ static void initX11Stuff() {
             tigrError(0, "Failed to choose FB config");
         }
         fbConfig = fbc[0];
+        XFree(fbc);
 
         vi = glXGetVisualFromFBConfig(dpy, fbConfig);
         if (vi == NULL) {
@@ -4496,6 +4615,8 @@ static void initX11Stuff() {
         }
 
         wmDeleteMessage = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+
+        atexit(tearDownX11Stuff);
 
         done = 1;
     }
@@ -4596,9 +4717,9 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     if (flags & TIGR_FULLSCREEN) {
         // https://superuser.com/questions/1680077/does-x11-actually-have-a-native-fullscreen-mode
-        Atom wm_state   = XInternAtom (dpy, "_NET_WM_STATE", true );
-        Atom wm_fullscreen = XInternAtom (dpy, "_NET_WM_STATE_FULLSCREEN", true );
-        XChangeProperty(dpy, xwin, wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char *)&wm_fullscreen, 1);
+        Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", true);
+        Atom wm_fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", true);
+        XChangeProperty(dpy, xwin, wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char*)&wm_fullscreen, 1);
     } else {
         // Wait for window to get mapped
         for (;;) {
@@ -4617,6 +4738,9 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
         XResizeWindow(dpy, xwin, w * scale, h * scale);
     }
 
+    // Enable mouse events reporting (needed for mouse wheel events)
+    XSelectInput(dpy, xwin, ButtonPressMask);
+
     XTextProperty prop;
     int result = Xutf8TextListToTextProperty(dpy, (char**)&title, 1, XUTF8StringStyle, &prop);
     if (result == Success) {
@@ -4634,7 +4758,6 @@ Tigr* tigrWindow(int w, int h, const char* title, int flags) {
 
     XSetWMProtocols(dpy, xwin, &wmDeleteMessage, 1);
 
-    glc = glXCreateContext(dpy, vi, NULL, GL_TRUE);
     int contextAttributes[] = { GLX_CONTEXT_MAJOR_VERSION_ARB, 3, GLX_CONTEXT_MINOR_VERSION_ARB, 3, None };
     glc = glXCreateContextAttribsARB(dpy, fbConfig, NULL, GL_TRUE, contextAttributes);
     glXMakeCurrent(dpy, xwin, glc);
@@ -4925,6 +5048,33 @@ static void tigrProcessInput(TigrInternal* win, int winWidth, int winHeight) {
         prevButtons = buttons;
     }
 
+    // Retrieve mouse wheel events - Cannot be done in the XQueryPointer call
+    // -> https://comp.unix.programmer.narkive.com/eOnjkQ6L/xlib-xquerypointer-and-button4mask-button5mask#post2
+    // Button4 = WheelUp / Button5 = WheelDown
+    XEvent mouseButtonEvent;
+    while (XPending(win->dpy)) {
+        XPeekEvent(win->dpy, &mouseButtonEvent);
+        if (mouseButtonEvent.xany.type == ButtonPress) {
+            switch (mouseButtonEvent.xbutton.button) {
+                case Button4:
+                    win->scrollDeltaY += 1;
+                    break;
+                case Button5:
+                    win->scrollDeltaY -= 1;
+                    break;
+                case 6:
+                    win->scrollDeltaX += 1;
+                    break;
+                case 7:
+                    win->scrollDeltaX -= 1;
+                    break;
+            }
+            XNextEvent(win->dpy, &mouseButtonEvent);
+        } else {
+            break;
+        }
+    }
+
     static char prevKeys[32];
     char keys[32];
     XQueryKeymap(win->dpy, keys);
@@ -4973,6 +5123,8 @@ void tigrUpdate(Tigr* bmp) {
     TigrInternal* win = tigrInternal(bmp);
 
     memcpy(win->prev, win->keys, 256);
+    win->scrollDeltaX = 0;
+    win->scrollDeltaY = 0;
 
     XGetWindowAttributes(win->dpy, win->win, &gwa);
 
@@ -5051,9 +5203,20 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
     return buttons ? 1 : 0;
 }
 
+void tigrScrollWheel(Tigr* bmp, float* x, float* y) {
+    TigrInternal* win;
+    win = tigrInternal(bmp);
+    if (x) {
+        *x = win->scrollDeltaX;
+    }
+    if (y) {
+        *y = win->scrollDeltaY;
+    }
+}
+
 #endif  // __linux__ && !__ANDROID__
 
-#endif // #ifndef TIGR_HEADLESS
+#endif  // #ifndef TIGR_HEADLESS
 
 //////// End of inlined file: tigr_linux.c ////////
 
@@ -5804,6 +5967,15 @@ int tigrTouch(Tigr* bmp, TigrTouchPoint* points, int maxPoints) {
         points[i] = win->touchPoints[i];
     }
     return maxPoints < win->numTouchPoints ? maxPoints : win->numTouchPoints;
+}
+
+void tigrMouseWheel(Tigr* bmp, float* x, float* y) {
+    if (x) {
+        *x = 0;
+    }
+    if (y) {
+        *y = 0;
+    }
 }
 
 void* tigrReadFile(const char* fileName, int* length) {
