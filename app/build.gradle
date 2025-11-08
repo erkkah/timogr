@@ -18,20 +18,20 @@ keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 android {
     namespace 'timogr.app'
-    compileSdk 34
+    compileSdk 35
     ndkVersion '27.0.11902837'
 
     defaultConfig {
         applicationId 'timogr.app'
         minSdk 26
-        targetSdk 33
+        targetSdk 35
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_STL=c++_shared'
+                arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
             }
         }
-        versionCode 2
-        versionName '1.0.1'
+        versionCode 7
+        versionName '1.0.3'
     }
     signingConfigs {
         release {
@@ -69,7 +69,6 @@ android {
     }
     externalNativeBuild {
         cmake {
-            // version '3.10.2'
             path 'src/main/cpp/CMakeLists.txt'
         }
     }

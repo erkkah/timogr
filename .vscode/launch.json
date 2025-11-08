@@ -6,7 +6,7 @@
     "configurations": [
         {
             "type": "lldb",
-            "request": "custom",
+            "request": "launch",
             "name": "Debug",
             "targetCreateCommands": [
                 "target create ${workspaceFolder}/.debug/exe",
